@@ -15,8 +15,14 @@ import assetRoutes from "./routes/assets";
 import styleguideRoutes from "./routes/styleguides";
 import exportRoutes from "./routes/export";
 import { mcpClientManager } from "./lib/mcp/clientManager";
+import { seedDefaultStyleguides } from "./lib/seedDefaults";
 
 const app = new Hono();
+
+// Seed bundled default styleguides on first run (idempotent, one-time flag).
+seedDefaultStyleguides()
+  .then((n) => { if (n > 0) console.log(`[seed] inserted ${n} default styleguide(s)`); })
+  .catch((err) => console.error("[seed] default styleguides failed:", err));
 
 app.use("/api/*", cors({ origin: "*" }));
 
