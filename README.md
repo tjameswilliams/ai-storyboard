@@ -99,9 +99,9 @@ model; the structured-layout workflow itself does not require vision.
 |---|---|
 | API Base URL | `https://api.deepseek.com/v1` |
 | API Key | your key from <https://platform.deepseek.com/api_keys> |
-| Model | `deepseek-chat` (fast) or `deepseek-reasoner` (more deliberate) |
-| Temperature | `0.7` |
-| Context Window | `64000` |
+| Model | `deepseek-v4-pro` (suggested) |
+| Temperature | `1` |
+| Context Window | `600000` |
 
 DeepSeek is text-only — it's excellent for authoring/refining the Ideogram JSON,
 but it can't *see* images you attach in chat. Use Option B with a vision model if
@@ -109,9 +109,9 @@ you want the agent to look at reference images.
 
 ### Option B — LM Studio (fully local)
 
-1. Install [LM Studio](https://lmstudio.ai/), download a model (for image
-   understanding pick a vision model such as **Qwen2.5-VL-7B-Instruct**; for
-   text-only any strong instruct model works).
+1. Install [LM Studio](https://lmstudio.ai/) and download a model — a
+   **Gemma 4** model is suggested (they're multimodal, so the agent can also read
+   reference images you attach in chat).
 2. Go to the **Developer** tab → **Start Server** (default port `1234`).
 
 | Field | Value |
