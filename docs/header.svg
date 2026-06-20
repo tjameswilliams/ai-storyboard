@@ -1,0 +1,59 @@
+<svg width="1200" height="360" viewBox="0 0 1200 360" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AI Storyboard">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0a0a0f"/>
+      <stop offset="1" stop-color="#12121c"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="64" y1="0" x2="560" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3b82f6"/>
+      <stop offset="0.5" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#ec4899"/>
+    </linearGradient>
+    <linearGradient id="frame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c1c28"/>
+      <stop offset="1" stop-color="#14141d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#6d4bd6" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#6d4bd6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="360" fill="url(#bg)"/>
+  <rect width="1200" height="360" fill="url(#glow)" opacity="0.7" transform="translate(360 -40)"/>
+
+  <!-- Text block -->
+  <text x="64" y="96" font-family="Helvetica, Arial, sans-serif" font-size="14" letter-spacing="4" font-weight="600" fill="#8b8b9a">COMFYUI · IDEOGRAM 4 · AI AGENT</text>
+  <text x="62" y="186" font-family="Helvetica, Arial, sans-serif" font-size="84" font-weight="800" fill="#fafafa">AI Storyboard</text>
+  <rect x="66" y="208" width="300" height="6" rx="3" fill="url(#accent)"/>
+  <text x="64" y="252" font-family="Helvetica, Arial, sans-serif" font-size="25" fill="#b6b6c2">Design &amp; generate ordered image storyboards —</text>
+  <text x="64" y="286" font-family="Helvetica, Arial, sans-serif" font-size="25" fill="#b6b6c2">structured layouts, draggable regions, one click to render.</text>
+
+  <!-- Storyboard filmstrip motif -->
+  <g transform="translate(726 120)">
+    <!-- frame 1 -->
+    <g transform="translate(0 16)">
+      <rect width="132" height="132" rx="10" fill="url(#frame)" stroke="#2a2a38" stroke-width="1.5"/>
+      <rect x="14" y="16" width="64" height="46" rx="4" fill="none" stroke="#3b82f6" stroke-width="2" stroke-dasharray="5 4" opacity="0.9"/>
+      <rect x="60" y="70" width="58" height="44" rx="4" fill="none" stroke="#ec4899" stroke-width="2" stroke-dasharray="5 4" opacity="0.85"/>
+      <circle cx="112" cy="20" r="11" fill="#0a0a0f" stroke="#3b82f6" stroke-width="1.5"/>
+      <text x="112" y="24.5" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#cdd7ff">1</text>
+    </g>
+    <!-- frame 2 -->
+    <g transform="translate(150 0)">
+      <rect width="132" height="132" rx="10" fill="url(#frame)" stroke="#2a2a38" stroke-width="1.5"/>
+      <rect x="18" y="14" width="96" height="58" rx="4" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-dasharray="5 4" opacity="0.9"/>
+      <rect x="20" y="82" width="50" height="34" rx="4" fill="none" stroke="#3b82f6" stroke-width="2" stroke-dasharray="5 4" opacity="0.8"/>
+      <circle cx="112" cy="20" r="11" fill="#0a0a0f" stroke="#8b5cf6" stroke-width="1.5"/>
+      <text x="112" y="24.5" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#e0d6ff">2</text>
+    </g>
+    <!-- frame 3 -->
+    <g transform="translate(300 16)">
+      <rect width="132" height="132" rx="10" fill="url(#frame)" stroke="#2a2a38" stroke-width="1.5"/>
+      <rect x="16" y="18" width="100" height="70" rx="4" fill="none" stroke="#ec4899" stroke-width="2" stroke-dasharray="5 4" opacity="0.9"/>
+      <rect x="16" y="96" width="42" height="20" rx="4" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-dasharray="5 4" opacity="0.8"/>
+      <circle cx="112" cy="20" r="11" fill="#0a0a0f" stroke="#ec4899" stroke-width="1.5"/>
+      <text x="112" y="24.5" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#ffd6ec">3</text>
+    </g>
+  </g>
+</svg>
