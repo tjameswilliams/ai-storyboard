@@ -1,0 +1,39 @@
+appId: com.aivideoeditor.app
+productName: "AI Video Editor"
+directories:
+  output: release
+
+files:
+  - electron/dist/**/*
+  - server/**/*.js
+  - server/**/*.ts
+  - drizzle/**/*
+  - infographics/**/*
+  - node_modules/**/*
+  - "!node_modules/ffmpeg-static"
+  - "!node_modules/ffprobe-static"
+  - client/dist/**/*
+
+extraResources:
+  - from: node_modules/ffmpeg-static/ffmpeg
+    to: ffmpeg
+  - from: node_modules/ffprobe-static/bin/${os}/ffprobe
+    to: ffprobe
+
+npmRebuild: true
+nodeGypRebuild: false
+
+icon: build/icon.png
+
+mac:
+  target: dmg
+  category: public.app-category.video
+  icon: build/icon.icns
+
+win:
+  target: nsis
+  icon: build/icon.png
+
+linux:
+  target: AppImage
+  icon: build/icon.png

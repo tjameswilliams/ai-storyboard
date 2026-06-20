@@ -1,0 +1,86 @@
+import { useEffect, useRef, useState } from "react";
+import { api } from "../../api/client";
+import { useStore } from "../../store";
+import { BBoxOverlay } from "./BBoxOverlay";
+import type { StoryboardImage, Project, BoundingBox, Layout } from "../../types";
+import type { Rect } from "../../lib/bbox";
+
+export function ImageCanvas({ image, project }: { image: StoryboardImage; project: Project }) {
+  const patchImageLayout = useStore((s) => s.patchImageLayout);
+  const selectRegion = useStore((s) => s.selectRegion);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  // The letterboxed frame size (px), locked to the project's aspect ratio so
+  // bboxes never warp when the editor pane is a different shape than the image.
+  const [rect, setRect] = useState<Rect>({ w: 0, h: 0 });
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const aspect = project.width / project.height;
+    const fit = () => {
+      const cw = el.clientWidth;
+      const ch = el.clientHeight;
+      if (cw <= 0 || ch <= 0) return;
+      // Contain the aspect-locked frame within the available area.
+      let w = cw;
+      let h = w / aspect;
+      if (h > ch) { h = ch; w = h * aspect; }
+      setRect({ w: Math.round(w), h: Math.round(h) });
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [project.width, project.height]);
+
+  const regions = image.layout.compositional_deconstruction;
+
+  const commitRegionBox = (index: number, box: BoundingBox) => {
+    const next: Layout = {
+      ...image.layout,
+      compositional_deconstruction: image.layout.compositional_deconstruction.map((r, i) =>
+        i === index ? { ...r, bounding_box: box } : r,
+      ),
+    };
+    patchImageLayout(image.id, next);
+  };
+
+  return (
+    <div className="flex-1 min-w-0 bg-zinc-950 overflow-hidden p-6">
+      <div ref={containerRef} className="w-full h-full flex items-center justify-center">
+        {/* The frame: explicit px size locked to the project aspect ratio. */}
+        <div
+          className="relative bg-zinc-900 border border-zinc-800 shadow-lg"
+          style={{ width: rect.w || undefined, height: rect.h || undefined }}
+          onClick={() => selectRegion(null)}
+        >
+          {image.filePath ? (
+            <img
+              src={api.mediaUrl(image.filePath)}
+              alt={image.name || "frame"}
+              className="absolute inset-0 w-full h-full object-contain"
+              draggable={false}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-[11px] text-zinc-600 text-center px-4">
+              {image.status === "generating" ? "Generating…" : "Not generated yet — draw and edit regions, then Generate"}
+            </div>
+          )}
+
+          {/* Region overlays */}
+          {rect.w > 0 &&
+            regions.map((region, index) => (
+              <BBoxOverlay
+                key={region.id || index}
+                region={region}
+                index={index}
+                rect={rect}
+                onCommit={(box) => commitRegionBox(index, box)}
+              />
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}

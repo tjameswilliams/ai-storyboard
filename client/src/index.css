@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+@theme {
+  --color-zinc-850: #1f1f23;
+  --color-zinc-925: #131316;
+
+  /* Surfaces */
+  --color-bg-app: #09090b;
+  --color-bg-canvas: #131316;
+  --color-bg-panel: #18181b;
+  --color-bg-elevated: #1f1f23;
+  --color-bg-input: #27272a;
+
+  /* Borders */
+  --color-border-subtle: #27272a;
+  --color-border-default: #3f3f46;
+  --color-border-strong: #52525b;
+
+  /* Foreground */
+  --color-fg-1: #fafafa;
+  --color-fg-2: #e4e4e7;
+  --color-fg-3: #d4d4d8;
+  --color-fg-muted: #a1a1aa;
+  --color-fg-subtle: #71717a;
+  --color-fg-faint: #52525b;
+
+  /* Accents (semantic only) */
+  --color-accent: #3b82f6;
+  --color-accent-hover: #60a5fa;
+
+  /* Timeline clip colors */
+  --color-track-video: #4338ca;
+  --color-track-audio: #059669;
+  --color-track-graphics: #c026d3;
+  --color-track-text: #db2777;
+
+  /* Mono — system stack only, no webfont */
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+
+:root {
+  --brand-gradient: linear-gradient(135deg, #6366f1 0%, #d946ef 50%, #22d3ee 100%);
+  --brand-gradient-marketing: linear-gradient(135deg, #1e1b4b 0%, #4c1d95 25%, #7e22ce 55%, #d946ef 80%, #22d3ee 100%);
+
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.4);
+  --ring-focus: 0 0 0 2px rgba(59, 130, 246, 0.5);
+
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 120ms;
+  --dur-normal: 180ms;
+  --dur-slow: 320ms;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}

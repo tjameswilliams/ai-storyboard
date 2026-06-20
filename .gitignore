@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Database
+data.db
+data.db-journal
+data.db-wal
+data.db-shm
+
+# Uploads & generated files
+uploads/
+
+# Build output
+client/dist/
+dist/
+electron/dist/
+release/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editor & OS
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Logs
+*.log
