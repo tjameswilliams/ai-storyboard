@@ -47,10 +47,18 @@ export default function App() {
       loadStyleguide(urlStyleguideId);
       return;
     }
+    // Restore the project to open: URL param wins, then the last project opened
+    // before shutdown (Electron restarts at a bare URL), then the first project.
     const urlProjectId = params.get("project");
-    const targetId = urlProjectId && projects.find((p) => p.id === urlProjectId)
-      ? urlProjectId
-      : projects[0].id;
+    const lastProjectId = (() => {
+      try { return localStorage.getItem("sb.lastProjectId"); } catch { return null; }
+    })();
+    const valid = (id: string | null | undefined) => !!id && projects.some((p) => p.id === id);
+    const targetId = valid(urlProjectId)
+      ? urlProjectId!
+      : valid(lastProjectId)
+        ? lastProjectId!
+        : projects[0].id;
     loadProject(targetId);
   }, [projects]);
 
@@ -62,6 +70,8 @@ export default function App() {
     } else if (project) {
       url.searchParams.set("project", project.id);
       url.searchParams.delete("styleguide");
+      // Remember the last opened project so it reopens after an app restart.
+      try { localStorage.setItem("sb.lastProjectId", project.id); } catch { /* ignore */ }
     } else {
       return;
     }
