@@ -72,64 +72,60 @@ app.get("/projects/:projectId/export/pdf", async (c) => {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
 
-  // US Letter portrait.
-  const PAGE_W = 612;
-  const PAGE_H = 792;
-  const MARGIN = 36;
-  const GUTTER = 14;
-  const CAPTION_H = captions ? 13 : 0;
-  const ROW_GAP = 16;
-
+  // Full-bleed layout: images tile edge-to-edge with no page margins or gutters.
+  // Each page's height is sized exactly to the rows it holds, so there is no
+  // white border on any edge. With rows-per-page = columns, every full page is
+  // exactly the project's aspect ratio. Cells preserve the image aspect, so
+  // images are never distorted. Captions (optional) overlay the image bottom as
+  // a translucent bar rather than reserving layout space.
+  const PAGE_W = 1200;
   const aspect = data.project.width / data.project.height; // w/h
-  const cellW = (PAGE_W - 2 * MARGIN - (columns - 1) * GUTTER) / columns;
+  const cellW = PAGE_W / columns;
   const imgH = cellW / aspect;
-  const rowH = imgH + CAPTION_H + ROW_GAP;
+  const rowsPerPage = columns;
 
-  let page = doc.addPage([PAGE_W, PAGE_H]);
-  let col = 0;
-  let yTop = PAGE_H - MARGIN; // top of the current row
+  const total = data.images.length;
+  const totalRows = Math.max(1, Math.ceil(total / columns));
 
-  const newRowIfNeeded = () => {
-    if (yTop - rowH < MARGIN) {
-      page = doc.addPage([PAGE_W, PAGE_H]);
-      yTop = PAGE_H - MARGIN;
-    }
-  };
+  for (let startRow = 0; startRow < totalRows; startRow += rowsPerPage) {
+    const rowsThisPage = Math.min(rowsPerPage, totalRows - startRow);
+    const pageH = rowsThisPage * imgH;
+    const page = doc.addPage([PAGE_W, pageH]);
 
-  for (let i = 0; i < data.images.length; i++) {
-    const img = data.images[i];
-    if (col === 0) newRowIfNeeded();
+    for (let r = 0; r < rowsThisPage; r++) {
+      for (let c = 0; c < columns; c++) {
+        const i = (startRow + r) * columns + c;
+        if (i >= total) break;
+        const img = data.images[i];
+        const x = c * cellW;
+        const y = pageH - (r + 1) * imgH; // bottom-left of the cell
 
-    const x = MARGIN + col * (cellW + GUTTER);
-    const imgY = yTop - imgH; // bottom-left y of the image
+        const file = img.filePath ? imageBytes(img.filePath) : null;
+        if (file) {
+          try {
+            const embedded = file.kind === "jpg" ? await doc.embedJpg(file.bytes) : await doc.embedPng(file.bytes);
+            page.drawImage(embedded, { x, y, width: cellW, height: imgH });
+          } catch {
+            drawPlaceholder(page, x, y, cellW, imgH, font, "render error");
+          }
+        } else {
+          drawPlaceholder(page, x, y, cellW, imgH, font, img.status === "generating" ? "generating…" : "not generated");
+        }
 
-    const file = img.filePath ? imageBytes(img.filePath) : null;
-    if (file) {
-      try {
-        const embedded = file.kind === "jpg" ? await doc.embedJpg(file.bytes) : await doc.embedPng(file.bytes);
-        page.drawImage(embedded, { x, y: imgY, width: cellW, height: imgH });
-      } catch {
-        drawPlaceholder(page, x, imgY, cellW, imgH, font, "render error");
+        if (captions) {
+          const barH = Math.min(26, Math.max(15, imgH * 0.06));
+          const size = Math.min(11, Math.max(8, Math.round(barH * 0.45)));
+          page.drawRectangle({ x, y, width: cellW, height: barH, color: rgb(0, 0, 0), opacity: 0.55 });
+          const caption = `${i + 1}. ${img.name || ""}`.trim();
+          page.drawText(truncate(caption, font, size, cellW - 12), {
+            x: x + 6,
+            y: y + (barH - size) / 2 + 1,
+            size,
+            font,
+            color: rgb(1, 1, 1),
+          });
+        }
       }
-    } else {
-      drawPlaceholder(page, x, imgY, cellW, imgH, font, img.status === "generating" ? "generating…" : "not generated");
-    }
-
-    if (captions) {
-      const caption = `${i + 1}. ${img.name || ""}`.trim();
-      page.drawText(truncate(caption, font, 8, cellW), {
-        x,
-        y: imgY - 10,
-        size: 8,
-        font,
-        color: rgb(0.25, 0.25, 0.25),
-      });
-    }
-
-    col++;
-    if (col >= columns) {
-      col = 0;
-      yTop -= rowH;
     }
   }
 
@@ -148,10 +144,10 @@ function drawPlaceholder(
   font: Awaited<ReturnType<PDFDocument["embedFont"]>>,
   label: string,
 ) {
-  page.drawRectangle({ x, y, width: w, height: h, borderColor: rgb(0.8, 0.8, 0.8), borderWidth: 1, color: rgb(0.96, 0.96, 0.96) });
-  const size = 8;
+  page.drawRectangle({ x, y, width: w, height: h, color: rgb(0.12, 0.12, 0.14) });
+  const size = 9;
   const tw = font.widthOfTextAtSize(label, size);
-  page.drawText(label, { x: x + (w - tw) / 2, y: y + h / 2 - 4, size, font, color: rgb(0.6, 0.6, 0.6) });
+  page.drawText(label, { x: x + (w - tw) / 2, y: y + h / 2 - 4, size, font, color: rgb(0.5, 0.5, 0.55) });
 }
 
 function truncate(text: string, font: Awaited<ReturnType<PDFDocument["embedFont"]>>, size: number, maxW: number): string {
