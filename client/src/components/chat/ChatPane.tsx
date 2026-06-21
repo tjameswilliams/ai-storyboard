@@ -485,13 +485,21 @@ export function ChatPane() {
       {/* Context usage + manual summarize (project chat only — no auto-summarization in scoped chats) */}
       {!inStyleguideMode && chatScope === "project" && <ContextUsageBar />}
 
-      {/* Active Plan (project mode only — no plans in scoped chats) */}
-      {!inStyleguideMode && chatScope === "project" && activePlan && activePlan.status !== "completed" && activePlan.status !== "cancelled" && (
+      {/* Active Plan — a project-level artifact, so it stays visible even when
+          the chat is scoped to an individual frame. Approve/cancel act on the
+          project conversation (switch scope first so the message lands there). */}
+      {!inStyleguideMode && activePlan && activePlan.status !== "completed" && activePlan.status !== "cancelled" && (
         <div className="px-3 pt-2 shrink-0">
           <PlanChecklist
             plan={activePlan}
-            onApprove={() => sendChatMessage("Looks good — go ahead and execute the plan.")}
-            onCancel={() => sendChatMessage("Cancel the plan.")}
+            onApprove={async () => {
+              if (chatScope !== "project") await setChatScope("project");
+              sendChatMessage("Looks good — go ahead and execute the plan.");
+            }}
+            onCancel={async () => {
+              if (chatScope !== "project") await setChatScope("project");
+              sendChatMessage("Cancel the plan.");
+            }}
             onDismiss={dismissPlan}
           />
         </div>
