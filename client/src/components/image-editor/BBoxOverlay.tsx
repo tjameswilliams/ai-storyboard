@@ -12,7 +12,7 @@ const HANDLES: { id: Handle; cls: string; cursor: string }[] = [
   { id: "se", cls: "right-0 bottom-0 translate-x-1/2 translate-y-1/2", cursor: "nwse-resize" },
 ];
 
-const COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#eab308", "#a855f7", "#06b6d4", "#f97316", "#ec4899"];
+export const REGION_COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#eab308", "#a855f7", "#06b6d4", "#f97316", "#ec4899"];
 
 export function BBoxOverlay({
   region,
@@ -41,7 +41,7 @@ export function BBoxOverlay({
 
   const selected = selectedRegionIndex === index;
   const hovered = hoveredRegionIndex === index;
-  const color = COLORS[index % COLORS.length];
+  const color = REGION_COLORS[index % REGION_COLORS.length];
 
   // Render the live drag preview for this region if one exists, else the stored box.
   const box: BoundingBox =
@@ -49,6 +49,8 @@ export function BBoxOverlay({
   const px = toPx(box, rect);
 
   const beginDrag = (mode: "move" | Handle) => (e: React.MouseEvent) => {
+    // Left button only — let right-click bubble up to the canvas stack picker.
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     selectRegion(index);
@@ -126,6 +128,10 @@ export function BBoxOverlay({
         background: selected ? `${color}22` : hovered ? `${color}14` : "transparent",
         cursor: "move",
         boxSizing: "border-box",
+        // Raise the selected box to the top of the stack so it's the one that
+        // receives drag/resize even when boxes overlap. Hover raises slightly so
+        // the labels stay legible.
+        zIndex: selected ? 40 : hovered ? 30 : 20,
       }}
     >
       {/* Label */}
