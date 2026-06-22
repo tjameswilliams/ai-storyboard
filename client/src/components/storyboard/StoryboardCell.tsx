@@ -18,6 +18,7 @@ export function StoryboardCell({
   onDragEnd,
   onDragOver,
   onDrop,
+  onContextMenu,
 }: {
   image: StoryboardImage;
   index: number;
@@ -27,6 +28,7 @@ export function StoryboardCell({
   onDragEnd: (e: React.DragEvent) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
 }) {
   const selectImage = useStore((s) => s.selectImage);
   const generatingImageIds = useStore((s) => s.generatingImageIds);
@@ -42,6 +44,7 @@ export function StoryboardCell({
       onDragEnd={onDragEnd}
       onDragOver={onDragOver}
       onDrop={onDrop}
+      onContextMenu={onContextMenu}
       onClick={() => selectImage(image.id)}
       className={`group relative rounded-lg border bg-zinc-900 overflow-hidden cursor-pointer transition-colors ${
         isDragging ? "opacity-40" : "border-zinc-800 hover:border-zinc-600"

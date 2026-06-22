@@ -38,6 +38,7 @@ export interface ImageSlice {
   updateImageLayout: (id: string, layout: Layout) => Promise<void>;
   patchImageLayout: (id: string, layout: Layout) => void;
   generateImage: (id: string, opts?: { regenerate?: boolean }) => Promise<void>;
+  regenerateAll: () => Promise<void>;
   setGridColumns: (n: number) => void;
   openViewer: (index?: number) => void;
   closeViewer: () => void;
@@ -164,6 +165,21 @@ export const createImageSlice: StateCreator<AppState, [], [], ImageSlice> = (set
       const after = new Set(get().generatingImageIds);
       after.delete(id);
       set({ generatingImageIds: after });
+    }
+  },
+
+  // Regenerate every frame that has something to render, one at a time so we
+  // don't flood ComfyUI's queue. Frames with no description/regions/prompt are
+  // skipped (nothing to generate).
+  regenerateAll: async () => {
+    for (const img of get().images) {
+      const layout = img.layout;
+      const hasContent =
+        !!layout?.high_level_description?.trim() ||
+        (layout?.compositional_deconstruction?.length ?? 0) > 0 ||
+        !!img.plainPrompt?.trim();
+      if (!hasContent) continue;
+      await get().generateImage(img.id, { regenerate: true });
     }
   },
 

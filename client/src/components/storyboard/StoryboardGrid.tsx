@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "../../store";
 import { StoryboardCell } from "./StoryboardCell";
 import { ExportModal } from "./ExportModal";
@@ -11,10 +11,38 @@ export function StoryboardGrid() {
   const addImage = useStore((s) => s.addImage);
   const reorderImages = useStore((s) => s.reorderImages);
   const openViewer = useStore((s) => s.openViewer);
+  const regenerateAll = useStore((s) => s.regenerateAll);
+  const generateImage = useStore((s) => s.generateImage);
+  const deleteImage = useStore((s) => s.deleteImage);
+  const selectImage = useStore((s) => s.selectImage);
+  const anyGenerating = useStore((s) => s.generatingImageIds.size > 0);
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropBeforeId, setDropBeforeId] = useState<string | null>(null);
   const [showExport, setShowExport] = useState(false);
+  const [cellMenu, setCellMenu] = useState<{ x: number; y: number; imageId: string; index: number } | null>(null);
+
+  // Close the cell context menu on outside click / Escape.
+  useEffect(() => {
+    if (!cellMenu) return;
+    const close = () => setCellMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setCellMenu(null); };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [cellMenu]);
+
+  const handleRegenerateAll = () => {
+    if (anyGenerating) return;
+    const n = images.filter((i) => i.layout?.high_level_description?.trim() || (i.layout?.compositional_deconstruction?.length ?? 0) > 0 || i.plainPrompt?.trim()).length;
+    if (n === 0) return;
+    if (window.confirm(`Regenerate ${n} frame${n === 1 ? "" : "s"}? This re-runs the workflow for each (new seeds) and overwrites their current images.`)) {
+      regenerateAll();
+    }
+  };
 
   const handleDrop = (targetId: string) => {
     if (!dragId || dragId === targetId) {
@@ -62,6 +90,14 @@ export function StoryboardGrid() {
           title="Export as ZIP or PDF"
         >
           ⬇ Export
+        </button>
+        <button
+          onClick={handleRegenerateAll}
+          disabled={images.length === 0 || anyGenerating}
+          className="text-xs px-2 py-1 rounded border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 disabled:opacity-40"
+          title="Regenerate every frame that has content"
+        >
+          {anyGenerating ? "Regenerating…" : "⟳ Regenerate all"}
         </button>
 
         <div className="flex-1" />
@@ -139,12 +175,60 @@ export function StoryboardGrid() {
                     e.preventDefault();
                     handleDrop(image.id);
                   }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setCellMenu({ x: e.clientX, y: e.clientY, imageId: image.id, index });
+                  }}
                 />
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Per-frame right-click menu */}
+      {cellMenu && (
+        <div
+          className="fixed z-50 min-w-[170px] bg-zinc-900 border border-zinc-700 rounded-md shadow-xl py-1 text-xs"
+          style={{ left: cellMenu.x, top: cellMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-zinc-500 border-b border-zinc-800">
+            Frame {cellMenu.index + 1}
+          </div>
+          <button
+            onMouseDown={(e) => { e.stopPropagation(); selectImage(cellMenu.imageId); setCellMenu(null); }}
+            className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-800"
+          >
+            Open editor
+          </button>
+          <button
+            onMouseDown={(e) => { e.stopPropagation(); generateImage(cellMenu.imageId, { regenerate: true }); setCellMenu(null); }}
+            className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-800"
+          >
+            Regenerate
+          </button>
+          <button
+            onMouseDown={(e) => { e.stopPropagation(); openViewer(cellMenu.index); setCellMenu(null); }}
+            className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-800"
+          >
+            Display from here
+          </button>
+          <div className="my-1 border-t border-zinc-800" />
+          <button
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              const idx = cellMenu.index;
+              const id = cellMenu.imageId;
+              setCellMenu(null);
+              if (window.confirm(`Delete frame ${idx + 1}? This can't be undone.`)) deleteImage(id);
+            }}
+            className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-red-950/40"
+          >
+            Delete frame
+          </button>
+        </div>
+      )}
 
       {showExport && <ExportModal onClose={() => setShowExport(false)} />}
     </div>
