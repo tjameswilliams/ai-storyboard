@@ -78,7 +78,71 @@ export const queryTools: Record<string, ToolHandler> = {
       },
     };
   },
+  // Render an ASCII schematic of the layout so the agent can "see" where its
+  // boxes land — drawn to scale on a character grid that is itself aspect-
+  // correct, so orientation and proportions are visible at a glance.
+  render_layout: async (args, projectId) => {
+    const imageId = args.image_id as string;
+    const [img] = await db.select().from(schema.images).where(eq(schema.images.id, imageId));
+    if (!img || img.projectId !== projectId) return { success: false, result: "Image not found in this project" };
+    const [project] = await db.select().from(schema.projects).where(eq(schema.projects.id, projectId));
+    const W = project?.width ?? 1024;
+    const H = project?.height ?? 1024;
+    const layout = parseLayout(img.layout);
+    const regions = layout.compositional_deconstruction;
+
+    const { ascii, legend } = renderLayoutAscii(regions, W, H);
+    return {
+      success: true,
+      result: {
+        canvas: `${W}x${H}px`,
+        orientation: W > H ? "landscape (wider than tall)" : W < H ? "portrait (taller than wide)" : "square",
+        note: "Schematic only (box positions/sizes), not the generated picture. Each box is drawn to scale; the grid matches the canvas aspect. '·' = empty.",
+        schematic: ascii,
+        legend,
+      },
+    };
+  },
 };
+
+const BOX_SYMBOLS = "123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+function renderLayoutAscii(
+  regions: ReturnType<typeof parseLayout>["compositional_deconstruction"],
+  W: number,
+  H: number,
+): { ascii: string; legend: string[] } {
+  const cols = 48;
+  // A character cell is ~2x taller than wide, so scale rows by ~0.5 to keep the
+  // ASCII block's visual shape matching the real canvas aspect.
+  let rows = Math.round(cols * (H / W) * 0.5);
+  rows = Math.max(6, Math.min(64, rows));
+  const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+  const grid: string[][] = Array.from({ length: rows }, () => Array(cols).fill("·"));
+
+  const legend: string[] = [];
+  regions.forEach((r, i) => {
+    const sym = BOX_SYMBOLS[i] ?? "#";
+    const [yMin, xMin, yMax, xMax] = r.bounding_box;
+    const c0 = clamp(Math.round((Math.min(xMin, xMax) / 1000) * (cols - 1)), 0, cols - 1);
+    const c1 = clamp(Math.round((Math.max(xMin, xMax) / 1000) * (cols - 1)), 0, cols - 1);
+    const r0 = clamp(Math.round((Math.min(yMin, yMax) / 1000) * (rows - 1)), 0, rows - 1);
+    const r1 = clamp(Math.round((Math.max(yMin, yMax) / 1000) * (rows - 1)), 0, rows - 1);
+    // Draw the rectangle border using the region's symbol (later boxes overwrite,
+    // so nested/overlapping boxes stay visible).
+    for (let c = c0; c <= c1; c++) { grid[r0][c] = sym; grid[r1][c] = sym; }
+    for (let rr = r0; rr <= r1; rr++) { grid[rr][c0] = sym; grid[rr][c1] = sym; }
+
+    const pxW = Math.round(((Math.max(xMin, xMax) - Math.min(xMin, xMax)) / 1000) * W);
+    const pxH = Math.round(((Math.max(yMin, yMax) - Math.min(yMin, yMax)) / 1000) * H);
+    const a = pxH ? +(pxW / pxH).toFixed(2) : 0;
+    const desc = (r.description || "").slice(0, 50);
+    legend.push(`${sym} = region ${i + 1}: bbox [${r.bounding_box.join(", ")}], ~${pxW}x${pxH}px (aspect ${a}:1)${desc ? ` — ${desc}` : ""}`);
+  });
+
+  const ascii = grid.map((row) => row.join("")).join("\n");
+  return { ascii, legend };
+}
 
 function summarizeImage(img: typeof schema.images.$inferSelect) {
   let highLevel = "";

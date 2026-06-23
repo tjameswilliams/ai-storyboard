@@ -60,7 +60,9 @@ BOUNDING BOX CONVENTION — read carefully, this is the #1 thing to get right:
 - Example: a banner across the top third spanning full width = [0, 0, 333, 1000].
 - Again: the order is [y_min, x_min, y_max, x_max], 0–1000, top-left origin.
 
-LAYOUT TOOLS: set_high_level_description, set_style_description, set_color_palette, add_region, update_region, delete_region, update_image_layout (full replace), patch_image_layout. The serialized layout is sent verbatim to Ideogram as the prompt.`
+LAYOUT TOOLS: set_high_level_description, set_style_description, set_color_palette, add_region, update_region, delete_region, update_image_layout (full replace), patch_image_layout. The serialized layout is sent verbatim to Ideogram as the prompt.
+
+VERIFY VISUALLY: after composing or editing the boxes (and before generating), call render_layout(image_id) to see an ASCII schematic of the frame — the boxes are drawn to scale on an aspect-correct grid, so you can confirm positions, overlaps, and that proportions look right for this canvas orientation. Adjust if a box looks stretched or mis-placed.`
     );
 
     // Anisotropic-grid correction. The 0–1000 grid is normalized per axis, so
