@@ -65,6 +65,19 @@ LAYOUT TOOLS: set_high_level_description, set_style_description, set_color_palet
 VERIFY VISUALLY: after composing or editing the boxes (and before generating), call render_layout(image_id) to see an ASCII schematic of the frame — the boxes are drawn to scale on an aspect-correct grid, so you can confirm positions, overlaps, and that proportions look right for this canvas orientation. Adjust if a box looks stretched or mis-placed.`
     );
 
+    parts.push(
+`RENDERING TEXT — Ideogram 4 is best-in-class at in-image text, but ONLY if you follow its conventions (this is commonly done wrong):
+- A region's "text" field holds the LITERAL words to render — exactly as they should appear, including spelling and capitalization. Put ONLY the words there; no styling, no quotes, no instructions.
+- Describe how the text should LOOK in that SAME region's "description": its weight/style (e.g. "bold condensed sans-serif", "elegant vintage serif", "hand-lettered brush script"), its CASING ("all caps", "title case", "lowercase"), its placement ("centered across the top", "small footer, bottom-left"), and rough size. The two are separate: "text" is WHAT to render, "description" is HOW it should look.
+- NEVER name a real typeface (no "Arial", "Helvetica", "Futura"). Describe the style instead.
+- Set the text COLOR via that region's color_palette (UPPERCASE hex, up to ~5 colors).
+- Give EVERY distinct piece of text its OWN region with its OWN, NON-OVERLAPPING bounding box. Overlapping text boxes are the #1 cause of garbled/duplicated letters.
+- For multi-line text (a headline + subhead + caption, stacked lines, etc.), use a SEPARATE text region per line/block — the model renders short individual lines far more reliably than one long multi-line string.
+- Keep each string SHORT. Long, dense, or unusual strings raise the error rate — break long copy into several short text regions.
+- Use at most ~6 text regions in a single frame.
+- Titles, signage, captions, labels, speech, and onomatopoeia all follow these same rules — words in "text", look in "description".`
+    );
+
     // Anisotropic-grid correction. The 0–1000 grid is normalized per axis, so
     // on a non-square canvas equal x/y spans are NOT equal on screen — without
     // this the agent makes everything wide on widescreen aspect ratios.
