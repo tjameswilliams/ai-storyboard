@@ -108,9 +108,18 @@ app.post("/chat", async (c) => {
     attachedStyleguides: attachedStyleguides.length > 0 ? attachedStyleguides : undefined,
   });
 
+  // Whether the configured LLM can accept image content. Many OpenAI-compatible
+  // endpoints (e.g. DeepSeek) are text-only and reject image_url parts with a
+  // 400, so we only offer/inject vision features when this is on.
+  const [visRow] = await db.select().from(schema.settings).where(eq(schema.settings.key, "visionCapable"));
+  const visionCapable = visRow?.value === "true";
+
   const baseTools = getToolDefinitions();
   const disabledBuckets = projectId ? await getDisabledToolBuckets(projectId) : new Set<string>();
-  const tools = filterToolsByBuckets(baseTools, disabledBuckets);
+  let tools = filterToolsByBuckets(baseTools, disabledBuckets);
+  // render_layout_image only makes sense for vision models — hide it otherwise
+  // so the agent uses the ASCII render_layout instead.
+  if (!visionCapable) tools = tools.filter((t) => t.function?.name !== "render_layout_image");
   const externalTools = mcpClientManager.getAllToolDefinitions();
   const allTools = [...tools, ...externalTools];
   const toolsJson = JSON.stringify(allTools);
@@ -136,6 +145,12 @@ app.post("/chat", async (c) => {
     { role: "system", content: systemPrompt },
     ...processedMessages,
   ];
+
+  // Text-only model: drop any attached image content up front so we never send
+  // image_url parts the endpoint would reject.
+  if (!visionCapable) {
+    await stripImageContentWithVisionFallback(conversation, getUploadsDir());
+  }
 
   const contextWindow = await getContextWindowSize();
   const totalTokens = estimateFullContextUsage(conversation as Array<{ role: string; content: string }>, toolsJson);
@@ -213,7 +228,10 @@ app.post("/chat", async (c) => {
             console.error("[chat] LLM request failed:", errMsg);
             const hasImageContent = (conversation as any[]).some((m: any) =>
               Array.isArray(m.content) && m.content.some((p: any) => p.type === "image_url"));
-            const isVisionRejection = hasImageContent && turnCount === 1 && /\b400\b/.test(errMsg) && !/\b404\b/.test(errMsg);
+            // Strip images and retry on any image-rejection 400 (text-only model),
+            // regardless of which turn it happened on — covers both user-attached
+            // images and injected layout previews.
+            const isVisionRejection = hasImageContent && /\b400\b/.test(errMsg) && !/\b404\b/.test(errMsg);
             if (isVisionRejection) {
               await stripImageContentWithVisionFallback(conversation, getUploadsDir());
               try {
@@ -362,7 +380,7 @@ app.post("/chat", async (c) => {
             conversation.push({ role: "tool", content: resultJson, tool_call_id: tc.id });
 
             // render_layout_image wrote a wireframe PNG — queue it to show the model.
-            if (tc.function.name === "render_layout_image" && result.success) {
+            if (visionCapable && tc.function.name === "render_layout_image" && result.success) {
               const rr = result.result as { file?: string } | undefined;
               if (rr?.file) {
                 try {

@@ -23,6 +23,7 @@ export function SettingsModal() {
   const [model, setModel] = useState(settings.model || "llama3.2");
   const [temperature, setTemperature] = useState(settings.temperature || "0.7");
   const [contextWindow, setContextWindow] = useState(settings.contextWindow || "128000");
+  const [visionCapable, setVisionCapable] = useState(settings.visionCapable === "true");
   const [embeddingApiBaseUrl, setEmbeddingApiBaseUrl] = useState(settings.embeddingApiBaseUrl || "");
   const [embeddingApiKey, setEmbeddingApiKey] = useState(settings.embeddingApiKey || "");
   const [embeddingModel, setEmbeddingModel] = useState(settings.embeddingModel || "text-embedding-3-small");
@@ -36,6 +37,7 @@ export function SettingsModal() {
     setModel(settings.model || "llama3.2");
     setTemperature(settings.temperature || "0.7");
     setContextWindow(settings.contextWindow || "128000");
+    setVisionCapable(settings.visionCapable === "true");
     setEmbeddingApiBaseUrl(settings.embeddingApiBaseUrl || "");
     setEmbeddingApiKey(settings.embeddingApiKey || "");
     setEmbeddingModel(settings.embeddingModel || "text-embedding-3-small");
@@ -45,7 +47,7 @@ export function SettingsModal() {
   }, [settings]);
 
   const handleSave = async () => {
-    await updateSettings({ apiBaseUrl, apiKey, model, temperature, contextWindow, embeddingApiBaseUrl, embeddingApiKey, embeddingModel, braveSearchApiKey, googleSearchApiKey, googleSearchCx });
+    await updateSettings({ apiBaseUrl, apiKey, model, temperature, contextWindow, visionCapable: visionCapable ? "true" : "false", embeddingApiBaseUrl, embeddingApiKey, embeddingModel, braveSearchApiKey, googleSearchApiKey, googleSearchCx });
     setShowSettings(false);
   };
 
@@ -83,6 +85,20 @@ export function SettingsModal() {
               <Field label="Model" value={model} onChange={setModel} />
               <Field label="Temperature" value={temperature} onChange={setTemperature} />
               <Field label="Context Window" value={contextWindow} onChange={setContextWindow} />
+              <label className="flex items-start gap-2 text-xs text-zinc-300 pt-1">
+                <input
+                  type="checkbox"
+                  checked={visionCapable}
+                  onChange={(e) => setVisionCapable(e.target.checked)}
+                  className="accent-blue-500 mt-0.5"
+                />
+                <span>
+                  Model can see images (vision)
+                  <span className="block text-[10px] text-zinc-500">
+                    Enables sending reference images and the bbox wireframe preview to the model. Leave off for text-only models (e.g. DeepSeek) or you'll get image-rejection errors.
+                  </span>
+                </span>
+              </label>
             </div>
           )}
 
