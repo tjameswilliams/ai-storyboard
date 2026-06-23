@@ -7,6 +7,8 @@ import { parseLayout, stringifyLayout, validateLayout, emptyLayout, clampBox, ty
 
 type ImageRow = typeof schema.images.$inferSelect;
 
+const numOr = (v: unknown, d: number): number => (typeof v === "number" && Number.isFinite(v) ? v : d);
+
 async function getImage(imageId: string, projectId: string): Promise<ImageRow | null> {
   const [img] = await db.select().from(schema.images).where(eq(schema.images.id, imageId));
   if (!img || img.projectId !== projectId) return null;
@@ -171,7 +173,11 @@ export const imageOpsTools: Record<string, ToolHandler> = {
   add_region: async (args, projectId, undoContext) => {
     const regionId = newId();
     const res = await mutateLayout(args.image_id as string, projectId, undoContext, "add_region", (layout) => {
-      const box = clampBox((args.bounding_box as [number, number, number, number]) ?? [0, 0, 1000, 1000]);
+      // Accept named edges (preferred) and assemble Ideogram's y-first array.
+      // Falls back to a raw bounding_box array if one is passed.
+      const box = Array.isArray(args.bounding_box)
+        ? clampBox(args.bounding_box as [number, number, number, number])
+        : clampBox([numOr(args.y_min, 0), numOr(args.x_min, 0), numOr(args.y_max, 1000), numOr(args.x_max, 1000)]);
       const region: Region = {
         id: regionId,
         bounding_box: box,
@@ -189,7 +195,13 @@ export const imageOpsTools: Record<string, ToolHandler> = {
     mutateLayout(args.image_id as string, projectId, undoContext, "update_region", (layout) => {
       const region = layout.compositional_deconstruction.find((r) => r.id === args.region_id);
       if (!region) throw new Error(`Region ${args.region_id} not found`);
-      if (args.bounding_box !== undefined) region.bounding_box = clampBox(args.bounding_box as [number, number, number, number]);
+      const [cy0, cx0, cy1, cx1] = region.bounding_box;
+      if (Array.isArray(args.bounding_box)) {
+        region.bounding_box = clampBox(args.bounding_box as [number, number, number, number]);
+      } else if (args.x_min !== undefined || args.y_min !== undefined || args.x_max !== undefined || args.y_max !== undefined) {
+        // Partial move/resize via named edges; omitted edges keep current value.
+        region.bounding_box = clampBox([numOr(args.y_min, cy0), numOr(args.x_min, cx0), numOr(args.y_max, cy1), numOr(args.x_max, cx1)]);
+      }
       if (args.description !== undefined) region.description = String(args.description);
       if (args.color_palette !== undefined) region.color_palette = args.color_palette as string[];
       if (args.text !== undefined) region.text = String(args.text);

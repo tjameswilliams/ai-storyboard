@@ -57,7 +57,14 @@ export const queryTools: Record<string, ToolHandler> = {
       const [yMin, xMin, yMax, xMax] = r.bounding_box;
       const pxW = Math.round(((xMax - xMin) / 1000) * W);
       const pxH = Math.round(((yMax - yMin) / 1000) * H);
-      return { index: i, id: r.id, pixelWidth: pxW, pixelHeight: pxH, onScreenAspect: pxH ? +(pxW / pxH).toFixed(2) : null };
+      // Report positions as named edges (x_min/y_min/x_max/y_max) — the same
+      // vocabulary the editing tools use — so the agent never has to read the
+      // raw y-first array.
+      return {
+        index: i, id: r.id,
+        x_min: xMin, y_min: yMin, x_max: xMax, y_max: yMax,
+        pixelWidth: pxW, pixelHeight: pxH, onScreenAspect: pxH ? +(pxW / pxH).toFixed(2) : null,
+      };
     });
     return {
       success: true,
@@ -137,7 +144,7 @@ function renderLayoutAscii(
     const pxH = Math.round(((Math.max(yMin, yMax) - Math.min(yMin, yMax)) / 1000) * H);
     const a = pxH ? +(pxW / pxH).toFixed(2) : 0;
     const desc = (r.description || "").slice(0, 50);
-    legend.push(`${sym} = region ${i + 1}: bbox [${r.bounding_box.join(", ")}], ~${pxW}x${pxH}px (aspect ${a}:1)${desc ? ` — ${desc}` : ""}`);
+    legend.push(`${sym} = region ${i + 1}: x ${Math.min(xMin, xMax)}–${Math.max(xMin, xMax)}, y ${Math.min(yMin, yMax)}–${Math.max(yMin, yMax)}, ~${pxW}x${pxH}px (aspect ${a}:1)${desc ? ` — ${desc}` : ""}`);
   });
 
   const ascii = grid.map((row) => row.join("")).join("\n");

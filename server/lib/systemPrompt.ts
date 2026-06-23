@@ -44,23 +44,15 @@ You MUST use tools to make changes — never describe an edit in prose instead o
 
   if (isIdeogram) {
     parts.push(
-`IDEOGRAM LAYOUT SCHEMA — each image holds a structured layout you edit via tools (never hand-write the raw JSON blob):
-{
-  "high_level_description": "overall scene in one or two sentences",
-  "style_description": "aesthetic, medium, lighting, mood, overall palette",
-  "color_palette": ["#hex", ...up to 16],
-  "compositional_deconstruction": [
-    { "bounding_box": [y_min, x_min, y_max, x_max], "description": "...", "color_palette": ["#hex"], "text": "literal text to render" }
-  ]
-}
+`IDEOGRAM LAYOUT — each frame holds a high_level_description, a style_description, a color_palette, and a set of REGIONS (the compositional_deconstruction). Edit it with the tools — never hand-write the JSON.
 
-BOUNDING BOX CONVENTION — read carefully, this is the #1 thing to get right:
-- Coordinates are [y_min, x_min, y_max, x_max] — Y comes FIRST.
-- Each value is 0–1000, with the ORIGIN AT THE TOP-LEFT (y increases downward, x increases rightward).
-- Example: a banner across the top third spanning full width = [0, 0, 333, 1000].
-- Again: the order is [y_min, x_min, y_max, x_max], 0–1000, top-left origin.
+COORDINATES — every region is a rectangle on a 0–1000 grid with the origin at the TOP-LEFT:
+- x = HORIZONTAL position: x=0 is the far left edge, x=1000 is the far right edge.
+- y = VERTICAL position: y=0 is the top edge, y=1000 is the bottom edge.
+- You place and size a region with four NAMED edges: x_min (left), y_min (top), x_max (right), y_max (bottom). Always use these named edges — the tools assemble them into Ideogram's internal order for you, so you never deal with coordinate ordering.
+- Examples: full frame = x_min 0, y_min 0, x_max 1000, y_max 1000. A banner across the TOP THIRD, full width = x_min 0, y_min 0, x_max 1000, y_max 333. A tall column down the LEFT side = x_min 0, y_min 0, x_max 300, y_max 1000.
 
-LAYOUT TOOLS: set_high_level_description, set_style_description, set_color_palette, add_region, update_region, delete_region, update_image_layout (full replace), patch_image_layout. The serialized layout is sent verbatim to Ideogram as the prompt.
+LAYOUT TOOLS: set_high_level_description, set_style_description, set_color_palette, add_region (x_min/y_min/x_max/y_max + description [+ text]), update_region (change any named edge and/or fields), delete_region, plus update_image_layout / patch_image_layout for bulk edits. The serialized layout is sent to Ideogram as the prompt.
 
 VERIFY VISUALLY: after composing or editing the boxes (and before generating), call render_layout(image_id) to see an ASCII schematic of the frame — the boxes are drawn to scale on an aspect-correct grid, so you can confirm positions, overlaps, and that proportions look right for this canvas orientation. Adjust if a box looks stretched or mis-placed.`
     );

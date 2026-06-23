@@ -12,7 +12,23 @@ import { newId } from "./nanoid";
 
 const hexColor = z.string().regex(/^#?[0-9a-fA-F]{3,8}$/, "must be a hex color");
 
-export const RegionSchema = z.object({
+// Accept regions written with named edges (x_min/y_min/x_max/y_max) and
+// normalize to Ideogram's y-first bounding_box, so the agent can never
+// transpose the axes regardless of which path it uses.
+function coerceRegionInput(v: unknown): unknown {
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const o = v as Record<string, unknown>;
+    if (!Array.isArray(o.bounding_box) &&
+        (o.x_min !== undefined || o.y_min !== undefined || o.x_max !== undefined || o.y_max !== undefined)) {
+      const n = (x: unknown, d: number) => (typeof x === "number" && Number.isFinite(x) ? x : d);
+      const { x_min, y_min, x_max, y_max, ...rest } = o;
+      return { ...rest, bounding_box: [n(y_min, 0), n(x_min, 0), n(y_max, 1000), n(x_max, 1000)] };
+    }
+  }
+  return v;
+}
+
+export const RegionSchema = z.preprocess(coerceRegionInput, z.object({
   // Internal id so region-level tools/inspector can target a region. Stripped
   // before the layout is serialized into the model prompt.
   id: z.string().default(() => newId()),
@@ -20,7 +36,7 @@ export const RegionSchema = z.object({
   description: z.string().default(""),
   color_palette: z.array(hexColor).optional(),
   text: z.string().optional(),
-});
+}));
 
 export const LayoutSchema = z.object({
   high_level_description: z.string().default(""),

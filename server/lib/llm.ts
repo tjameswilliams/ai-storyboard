@@ -176,13 +176,12 @@ export function getToolDefinitions() {
   });
 
   const imageId = { type: "string", description: "The storyboard image (frame) id." };
-  const bbox = {
-    type: "array",
-    items: { type: "number" },
-    minItems: 4,
-    maxItems: 4,
-    description: "Bounding box [y_min, x_min, y_max, x_max], each 0–1000, top-left origin (Y first).",
-  };
+  // Named coordinates (0–1000) so the agent never has to remember Ideogram's
+  // unusual y-first array order — the tools assemble the array internally.
+  const X_MIN = { type: "number", description: "Left edge (x_min), 0–1000 horizontally: 0 = far left, 1000 = far right." };
+  const X_MAX = { type: "number", description: "Right edge (x_max), 0–1000 horizontally (must be > x_min)." };
+  const Y_MIN = { type: "number", description: "Top edge (y_min), 0–1000 vertically: 0 = top, 1000 = bottom." };
+  const Y_MAX = { type: "number", description: "Bottom edge (y_max), 0–1000 vertically (must be > y_min)." };
   const hexArray = { type: "array", items: { type: "string" }, description: "Array of hex colors, e.g. [\"#1a2b3c\"]." };
 
   return [
@@ -236,23 +235,29 @@ export function getToolDefinitions() {
     fn("set_color_palette", "Set the frame's top-level color_palette (array of hex colors).", {
       type: "object", properties: { image_id: imageId, palette: hexArray }, required: ["image_id", "palette"],
     }),
-    fn("add_region", "Add a region to the frame's compositional_deconstruction. Bounding box is [y_min,x_min,y_max,x_max], 0–1000, top-left origin (Y first). Returns the new region id.", {
+    fn("add_region", "Add a region (a subject, object, or text element) to the frame. Give its rectangle with the four named edges x_min/y_min/x_max/y_max (0–1000; x is horizontal left→right, y is vertical top→bottom). Returns the new region id.", {
       type: "object",
       properties: {
         image_id: imageId,
-        bounding_box: bbox,
-        description: { type: "string", description: "What this region contains." },
+        x_min: X_MIN,
+        y_min: Y_MIN,
+        x_max: X_MAX,
+        y_max: Y_MAX,
+        description: { type: "string", description: "What this region contains (subject, pose, materials, lighting). For a text element, the styling/placement of the text." },
         color_palette: hexArray,
-        text: { type: "string", description: "Optional literal text Ideogram should render in this region." },
+        text: { type: "string", description: "Optional literal text Ideogram should render in this region (words only)." },
       },
-      required: ["image_id", "bounding_box", "description"],
+      required: ["image_id", "x_min", "y_min", "x_max", "y_max", "description"],
     }),
-    fn("update_region", "Update fields of an existing region (by region id). Only provided fields change.", {
+    fn("update_region", "Update fields of an existing region (by region id). Only provided fields change. To move/resize, pass any of the named edges x_min/y_min/x_max/y_max (0–1000; x horizontal, y vertical); omitted edges keep their current value.", {
       type: "object",
       properties: {
         image_id: imageId,
         region_id: { type: "string", description: "The region's id (from describe_image / add_region)." },
-        bounding_box: bbox,
+        x_min: X_MIN,
+        y_min: Y_MIN,
+        x_max: X_MAX,
+        y_max: Y_MAX,
         description: { type: "string" },
         color_palette: hexArray,
         text: { type: "string" },
