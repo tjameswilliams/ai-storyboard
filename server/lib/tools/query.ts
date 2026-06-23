@@ -2,6 +2,11 @@ import type { ToolHandler } from "../types";
 import { db, schema } from "../../db/client";
 import { eq, asc } from "drizzle-orm";
 import { parseLayout } from "../layout";
+import { renderLayoutPng } from "../layoutImage";
+import { getUploadsDir } from "../config";
+import { newId } from "../nanoid";
+import { writeFileSync } from "fs";
+import { resolve } from "path";
 
 export const queryTools: Record<string, ToolHandler> = {
   get_project_status: async (_args, projectId) => {
@@ -109,6 +114,39 @@ export const queryTools: Record<string, ToolHandler> = {
         legend,
       },
     };
+  },
+
+  // Render an actual PNG wireframe of the boxes and hand it to the (vision)
+  // agent to look at. The chat loop detects this tool and attaches the image as
+  // a vision message so the model literally sees the layout for verification.
+  render_layout_image: async (args, projectId) => {
+    const imageId = args.image_id as string;
+    const [img] = await db.select().from(schema.images).where(eq(schema.images.id, imageId));
+    if (!img || img.projectId !== projectId) return { success: false, result: "Image not found in this project" };
+    const [project] = await db.select().from(schema.projects).where(eq(schema.projects.id, projectId));
+    const W = project?.width ?? 1024;
+    const H = project?.height ?? 1024;
+    const layout = parseLayout(img.layout);
+    if (layout.compositional_deconstruction.length === 0) {
+      return { success: false, result: "This frame has no regions yet — add some, then render." };
+    }
+    try {
+      const png = renderLayoutPng(layout, W, H);
+      const file = `.layout-preview-${newId()}.png`;
+      writeFileSync(resolve(getUploadsDir(), file), png);
+      return {
+        success: true,
+        result: {
+          rendered: true,
+          file,
+          canvas: `${W}x${H}px`,
+          regionCount: layout.compositional_deconstruction.length,
+          note: "A labeled wireframe of the boxes is attached as an image. Look at it and confirm each box is positioned and proportioned correctly for this canvas; fix any that look stretched, overlapping wrong, or mis-placed.",
+        },
+      };
+    } catch (e) {
+      return { success: false, result: `Render failed: ${(e as Error).message}` };
+    }
   },
 };
 

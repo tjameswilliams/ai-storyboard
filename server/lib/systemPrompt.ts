@@ -54,7 +54,7 @@ COORDINATES — every region is a rectangle on a 0–1000 grid with the origin a
 
 LAYOUT TOOLS: set_high_level_description, set_style_description, set_color_palette, add_region (x_min/y_min/x_max/y_max + description [+ text]), update_region (change any named edge and/or fields), delete_region, plus update_image_layout / patch_image_layout for bulk edits. The serialized layout is sent to Ideogram as the prompt.
 
-VERIFY VISUALLY: after composing or editing the boxes (and before generating), call render_layout(image_id) to see an ASCII schematic of the frame — the boxes are drawn to scale on an aspect-correct grid, so you can confirm positions, overlaps, and that proportions look right for this canvas orientation. Adjust if a box looks stretched or mis-placed.`
+VERIFY VISUALLY: after composing or editing the boxes (and before generating), look at the layout. If you can see images, call render_layout_image(image_id) — it returns a labeled wireframe PNG of the boxes which is shown back to you; confirm each box is positioned and proportioned right for this canvas and fix any stretched/mis-placed ones with update_region. (render_layout gives the same thing as a text/ASCII schematic if you can't see images.)`
     );
 
     parts.push(

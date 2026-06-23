@@ -198,6 +198,9 @@ export function getToolDefinitions() {
     fn("render_layout", "See an ASCII schematic of a frame's bounding boxes drawn to scale on an aspect-correct grid (plus each box's pixel size and on-screen aspect). Use it to visually check positions, sizes, overlaps, and proportions after composing or editing a layout and before generating.", {
       type: "object", properties: { image_id: imageId }, required: ["image_id"],
     }),
+    fn("render_layout_image", "Render an actual labeled WIREFRAME IMAGE of a frame's bounding boxes (no generated picture) and attach it for you to look at. Call this after composing or editing a layout to visually confirm the boxes are positioned and proportioned correctly for the canvas, then fix anything that looks stretched or misplaced. Preferred over render_layout when you can see images.", {
+      type: "object", properties: { image_id: imageId }, required: ["image_id"],
+    }),
 
     // --- Layout editing ---
     fn("create_image", "Add a new storyboard frame. Optionally insert it right after an existing frame; otherwise it is appended to the end.", {

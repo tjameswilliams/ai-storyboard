@@ -20,6 +20,8 @@ import {
 import { getComfyDisabledWorkflowIds } from "../lib/comfyuiClient";
 import { getDisabledToolBuckets, filterToolsByBuckets } from "../lib/toolBuckets";
 import { parseLayout } from "../lib/layout";
+import { readFile, unlink } from "fs/promises";
+import { resolve } from "path";
 
 const app = new Hono();
 
@@ -236,6 +238,9 @@ app.post("/chat", async (c) => {
           let buffer = "";
           let content = "";
           let thinking = "";
+          // Layout-wireframe PNGs produced by render_layout_image this turn; injected
+          // as a vision user-message after the tool results so the model sees them.
+          const pendingLayoutImages: Array<{ label: string; url: string }> = [];
           let toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
           let finishReason = "";
 
@@ -356,12 +361,42 @@ app.post("/chat", async (c) => {
 
             conversation.push({ role: "tool", content: resultJson, tool_call_id: tc.id });
 
+            // render_layout_image wrote a wireframe PNG — queue it to show the model.
+            if (tc.function.name === "render_layout_image" && result.success) {
+              const rr = result.result as { file?: string } | undefined;
+              if (rr?.file) {
+                try {
+                  const path = resolve(getUploadsDir(), rr.file);
+                  const buf = await readFile(path);
+                  pendingLayoutImages.push({
+                    label: (args.image_id as string) || "frame",
+                    url: `data:image/png;base64,${buf.toString("base64")}`,
+                  });
+                  unlink(path).catch(() => {}); // transient preview — drop after embedding
+                } catch (e) {
+                  console.warn("[chat] could not read layout preview:", (e as Error).message);
+                }
+              }
+            }
+
             if (!result.success) {
               consecutiveErrors++;
               if (consecutiveErrors >= 5) break;
             } else {
               consecutiveErrors = 0;
             }
+          }
+
+          // Inject any layout wireframes as a vision message (after all tool
+          // results, so the assistant/tool message pairing stays valid).
+          if (pendingLayoutImages.length > 0) {
+            conversation.push({
+              role: "user",
+              content: [
+                { type: "text", text: "Here is a labeled wireframe of the bounding boxes you just laid out (numbers match the region order). Look at it and verify each box is positioned and proportioned correctly for this canvas — fix any that are stretched, overlapping wrong, or mis-placed using update_region. If it looks right, proceed." },
+                ...pendingLayoutImages.map((im) => ({ type: "image_url" as const, image_url: { url: im.url } })),
+              ],
+            });
           }
 
           if (consecutiveErrors >= 5) break;

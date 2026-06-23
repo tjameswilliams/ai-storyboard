@@ -29,6 +29,7 @@
     "@hono/node-server": "^1.13.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@mozilla/readability": "^0.6.0",
+    "@napi-rs/canvas": "^1.0.0",
     "better-sqlite3": "^12.6.2",
     "drizzle-orm": "^0.38.0",
     "hono": "^4.7.0",

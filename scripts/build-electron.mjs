@@ -21,6 +21,7 @@ await esbuild.build({
   external: [
     "electron",
     "better-sqlite3",
+    "@napi-rs/canvas",
     // esbuild ships its parser as a native binary located via a relative path
     // from the API source. Bundling it breaks that path resolution.
     "esbuild",
