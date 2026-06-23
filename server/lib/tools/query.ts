@@ -46,6 +46,19 @@ export const queryTools: Record<string, ToolHandler> = {
     const imageId = args.image_id as string;
     const [img] = await db.select().from(schema.images).where(eq(schema.images.id, imageId));
     if (!img || img.projectId !== projectId) return { success: false, result: "Image not found in this project" };
+    const [project] = await db.select().from(schema.projects).where(eq(schema.projects.id, projectId));
+    const layout = parseLayout(img.layout);
+    const W = project?.width ?? 1024;
+    const H = project?.height ?? 1024;
+    // Per-region on-screen size feedback: the 0–1000 grid is normalized per
+    // axis, so spans translate to different pixels on each axis. Surfacing the
+    // pixel size + on-screen aspect helps the agent shape boxes in proportion.
+    const regionPixelSizes = layout.compositional_deconstruction.map((r, i) => {
+      const [yMin, xMin, yMax, xMax] = r.bounding_box;
+      const pxW = Math.round(((xMax - xMin) / 1000) * W);
+      const pxH = Math.round(((yMax - yMin) / 1000) * H);
+      return { index: i, id: r.id, pixelWidth: pxW, pixelHeight: pxH, onScreenAspect: pxH ? +(pxW / pxH).toFixed(2) : null };
+    });
     return {
       success: true,
       result: {
@@ -57,7 +70,9 @@ export const queryTools: Record<string, ToolHandler> = {
         assetId: img.assetId,
         filePath: img.filePath,
         lastError: img.lastError,
-        layout: parseLayout(img.layout),
+        canvas: { width: W, height: H, squareFactor: +(H / W).toFixed(3) },
+        layout,
+        regionPixelSizes,
         plainPrompt: img.plainPrompt,
         negativePrompt: img.negativePrompt,
       },

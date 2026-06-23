@@ -62,6 +62,29 @@ BOUNDING BOX CONVENTION — read carefully, this is the #1 thing to get right:
 
 LAYOUT TOOLS: set_high_level_description, set_style_description, set_color_palette, add_region, update_region, delete_region, update_image_layout (full replace), patch_image_layout. The serialized layout is sent verbatim to Ideogram as the prompt.`
     );
+
+    // Anisotropic-grid correction. The 0–1000 grid is normalized per axis, so
+    // on a non-square canvas equal x/y spans are NOT equal on screen — without
+    // this the agent makes everything wide on widescreen aspect ratios.
+    const w = ctx.width;
+    const h = ctx.height;
+    if (w && h && w !== h) {
+      const factor = h / w;            // x-span = y-span * factor → square on screen
+      const f = factor.toFixed(2);
+      const xPerUnit = (w / 1000).toFixed(2);
+      const yPerUnit = (h / 1000).toFixed(2);
+      const wider = w > h;
+      const sq300 = Math.round(300 * factor);
+      parts.push(
+`PROPORTIONS ON THIS CANVAS — IMPORTANT (the grid is ${ctx.aspectRatio ?? ""}, NOT square):
+- The 0–1000 grid is normalized PER AXIS. This canvas is ${w}×${h}px: one x-unit = ${xPerUnit}px wide, one y-unit = ${yPerUnit}px tall.
+- A region's on-screen size is (x-span/1000 × ${w})px wide by (y-span/1000 × ${h})px tall, where x-span = x_max−x_min and y-span = y_max−y_min.
+- Because this canvas is ${wider ? "WIDER than tall" : "TALLER than wide"}, equal x and y spans render as a ${wider ? "WIDE" : "TALL"} rectangle — do NOT use equal spans for a compact/square subject.
+- To make a region look SQUARE, set its x-span ≈ ${f} × its y-span. Example: a square subject ~300 units tall should be ~${sq300} units wide, e.g. centered → x from ${Math.round(500 - sq300 / 2)} to ${Math.round(500 + sq300 / 2)}, y from 350 to 650.
+- For any target on-screen width:height ratio A, set x-span : y-span = A × ${f}.
+- The full frame is still [0,0,1000,1000]; this only changes how you SHAPE subjects within it. Think in final pixels, then convert to spans.`
+      );
+    }
   } else {
     parts.push(
 `PLAINTEXT FORMAT: this project uses plain text prompts (not Ideogram JSON). Use set_plain_prompt(image_id, prompt, negative_prompt?) to describe each image. The layout/region tools are not used in this mode.`
