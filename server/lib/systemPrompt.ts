@@ -66,6 +66,19 @@ VERIFY VISUALLY: after composing or editing the boxes (and before generating), c
     );
 
     parts.push(
+`IDEOGRAM CONTENT & STRUCTURE RULES (the model was trained on these conventions — following them improves adherence):
+- style_description: pack the visual treatment in Ideogram's order. Decide ONE rendering path and never mix them:
+  • PHOTOGRAPH path: "aesthetics (mood keywords), lighting, camera/lens (e.g. 35mm, f/1.4, shallow depth of field), medium 'photograph', color notes". Use this ONLY for photoreal images.
+  • ART path: "aesthetics (mood keywords), lighting, medium (illustration / painting / 3d render / graphic design), art style (e.g. 'flat vector, bold outlines'), color notes". Use this for anything illustrated/stylized.
+  Mixing photographic cues (camera, lens, f-stop) with illustration cues (art style, vector, painterly) is the #1 cause of worse-than-expected output — pick one.
+- BACKGROUND FIRST: the FIRST region must be the full-frame establishing shot — bounding_box [0,0,1000,1000] — describing only the setting, surface, atmosphere, and lighting (NOT the discrete subjects). Put each discrete subject/object/text in its OWN later region.
+- ORDER regions in reading order: background → foreground, top → bottom.
+- A region is a TEXT element when it has a "text" field (rendered literally — punctuation/accents preserved); otherwise it's an object/subject conveyed entirely in "description".
+- COLORS: always UPPERCASE hex (#RRGGBB, never #rrggbb or shorthand). The top-level color_palette holds up to 16 colors; each region's color_palette up to 5. The palette is a SEPARATE steering signal from the prose — set it AND reference the same hex values in your descriptions so colors stay consistent across the board.
+- Bounding boxes only need to be roughly right — pixel precision is not required. Keep each region's description concrete (subject, pose, materials, lighting).`
+    );
+
+    parts.push(
 `RENDERING TEXT — Ideogram 4 is best-in-class at in-image text, but ONLY if you follow its conventions (this is commonly done wrong):
 - A region's "text" field holds the LITERAL words to render — exactly as they should appear, including spelling and capitalization. Put ONLY the words there; no styling, no quotes, no instructions.
 - Describe how the text should LOOK in that SAME region's "description": its weight/style (e.g. "bold condensed sans-serif", "elegant vintage serif", "hand-lettered brush script"), its CASING ("all caps", "title case", "lowercase"), its placement ("centered across the top", "small footer, bottom-left"), and rough size. The two are separate: "text" is WHAT to render, "description" is HOW it should look.
