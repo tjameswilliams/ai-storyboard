@@ -75,14 +75,22 @@ LAYOUT TOOLS: set_high_level_description, set_style_description, set_color_palet
       const yPerUnit = (h / 1000).toFixed(2);
       const wider = w > h;
       const sq300 = Math.round(300 * factor);
+      const orient = wider ? "LANDSCAPE (wider than tall)" : "PORTRAIT (taller than wide)";
+      const layoutDir = wider
+        ? "Compose for width: wide establishing shots, subjects spread horizontally / side by side, horizon lines."
+        : "Compose for height: stack elements top-to-bottom; full-height subjects (a standing figure, a tower, a tall doorway) dominate vertically.";
+      const subjectEx = wider
+        ? "A wide subject (panorama, a group in a row) → LARGE x-span, SMALL y-span."
+        : "A full-height standing figure → SMALL x-span (~250–450) and LARGE y-span (~800–1000). Do not give it a wide x-span.";
       parts.push(
-`PROPORTIONS ON THIS CANVAS — IMPORTANT (the grid is ${ctx.aspectRatio ?? ""}, NOT square):
-- The 0–1000 grid is normalized PER AXIS. This canvas is ${w}×${h}px: one x-unit = ${xPerUnit}px wide, one y-unit = ${yPerUnit}px tall.
-- A region's on-screen size is (x-span/1000 × ${w})px wide by (y-span/1000 × ${h})px tall, where x-span = x_max−x_min and y-span = y_max−y_min.
-- Because this canvas is ${wider ? "WIDER than tall" : "TALLER than wide"}, equal x and y spans render as a ${wider ? "WIDE" : "TALL"} rectangle — do NOT use equal spans for a compact/square subject.
-- To make a region look SQUARE, set its x-span ≈ ${f} × its y-span. Example: a square subject ~300 units tall should be ~${sq300} units wide, e.g. centered → x from ${Math.round(500 - sq300 / 2)} to ${Math.round(500 + sq300 / 2)}, y from 350 to 650.
-- For any target on-screen width:height ratio A, set x-span : y-span = A × ${f}.
-- The full frame is still [0,0,1000,1000]; this only changes how you SHAPE subjects within it. Think in final pixels, then convert to spans.`
+`CANVAS SHAPE — this is a ${orient} canvas (${w}×${h}px). ${layoutDir}
+
+How bboxes map on this non-square canvas (do not let the math below fool you into laying it out the wrong way — it is ${orient}):
+- The FULL frame is ALWAYS [0,0,1000,1000]. x = 0..1000 always spans the full WIDTH (${w}px); y = 0..1000 always spans the full HEIGHT (${h}px). A full-bleed background/main shot is [0,0,1000,1000] regardless of orientation.
+- The 0–1000 grid is normalized PER AXIS, so the two axes have different pixel scales: 1 x-unit = ${xPerUnit}px, 1 y-unit = ${yPerUnit}px. A sub-region with EQUAL x and y spans therefore renders ${wider ? "WIDE" : "TALL"}, not square.
+- This per-axis scaling ONLY matters when sizing a sub-region to a specific real shape. To make one look SQUARE on screen, set x-span ≈ ${f} × y-span (a ~300-unit-tall square ≈ ${sq300} units wide). General rule: for on-screen width:height ratio A, x-span : y-span = A × ${f}.
+- Orientation example: ${subjectEx}
+- Plan each element's size in final pixels first, then convert to spans.`
       );
     }
   } else {
