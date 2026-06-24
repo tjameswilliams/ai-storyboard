@@ -9,7 +9,7 @@ import { clampBox, type Rect } from "../../lib/bbox";
 export function ImageCanvas({ image, project }: { image: StoryboardImage; project: Project }) {
   const patchImageLayout = useStore((s) => s.patchImageLayout);
   const selectRegion = useStore((s) => s.selectRegion);
-  const selectedRegionIndex = useStore((s) => s.selectedRegionIndex);
+  const toggleRegionSelection = useStore((s) => s.toggleRegionSelection);
   const selectedRegionIndices = useStore((s) => s.selectedRegionIndices);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -183,21 +183,31 @@ export function ImageCanvas({ image, project }: { image: StoryboardImage; projec
           style={{ left: menu.x, top: menu.y }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500 border-b border-zinc-800">
-            {menu.items.length} region{menu.items.length === 1 ? "" : "s"} here
+          <div className="px-2 py-1 border-b border-zinc-800">
+            <div className="text-[10px] uppercase tracking-wide text-zinc-500">
+              {menu.items.length} region{menu.items.length === 1 ? "" : "s"} here
+            </div>
+            <div className="text-[9px] text-zinc-600">Click to select · ⌘/Ctrl-click to add to group</div>
           </div>
           {menu.items.map((i) => {
             const rg = regions[i];
+            const inSelection = selectedRegionIndices.includes(i);
             return (
               <button
                 key={i}
                 onMouseDown={(e) => {
                   e.stopPropagation();
-                  selectRegion(i);
-                  setMenu(null);
+                  if (e.metaKey || e.ctrlKey) {
+                    // Toggle into the multi-selection and keep the menu open so
+                    // several stacked/buried boxes can be added in a row.
+                    toggleRegionSelection(i);
+                  } else {
+                    selectRegion(i);
+                    setMenu(null);
+                  }
                 }}
                 className={`w-full text-left px-2 py-1.5 flex items-center gap-2 hover:bg-zinc-800 ${
-                  selectedRegionIndex === i ? "bg-zinc-800/70" : ""
+                  inSelection ? "bg-zinc-800/70" : ""
                 }`}
               >
                 <span
@@ -205,7 +215,8 @@ export function ImageCanvas({ image, project }: { image: StoryboardImage; projec
                   style={{ background: REGION_COLORS[i % REGION_COLORS.length] }}
                 />
                 <span className="text-zinc-300 shrink-0">{i + 1}</span>
-                <span className="text-zinc-500 truncate">{rg?.description || "(no description)"}</span>
+                <span className="text-zinc-500 truncate flex-1">{rg?.description || "(no description)"}</span>
+                {inSelection && <span className="text-blue-400 shrink-0">✓</span>}
               </button>
             );
           })}
