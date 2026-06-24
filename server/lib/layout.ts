@@ -116,11 +116,29 @@ export function stringifyLayout(layout: Layout): string {
  * Serialize a layout for the model prompt: canonical key order, region `id`
  * fields stripped (they're internal), and empty optional fields omitted.
  */
+// Ideogram requires UPPERCASE hex; the color picker emits lowercase.
+function upHex(h: string): string {
+  return "#" + h.replace(/^#/, "").toUpperCase();
+}
+function upPalette(a: string[] | undefined, max: number): string[] | undefined {
+  if (!a || !a.length) return undefined;
+  return a.slice(0, max).map(upHex);
+}
+
+function isFullFrame([y0, x0, y1, x1]: [number, number, number, number]): boolean {
+  return x0 <= 50 && y0 <= 50 && x1 >= 950 && y1 >= 950;
+}
+
+/**
+ * Serialize a layout into Ideogram 4's canonical structured prompt:
+ *  { high_level_description, style_description:{...}, compositional_deconstruction:{ background, elements:[{type,bbox,...}] } }
+ * - style_description in canonical key order (photo vs art path).
+ * - The first full-frame region becomes the `background` string; the rest become
+ *   typed `elements` (type "obj"/"text", bbox, desc, ...).
+ * - All hex uppercased; palettes capped (16 image-level, 5 per element).
+ */
 export function serializeLayout(layout: Layout): string {
   const style = layout.style_description ?? {};
-  // Emit style_description in Ideogram's canonical key order; the top-level
-  // color_palette (editor convenience) flows into style_description.color_palette,
-  // matching the guide. photo and art_style are mutually exclusive.
   const styleOut: Record<string, unknown> = {};
   if (style.aesthetics) styleOut.aesthetics = style.aesthetics;
   if (style.lighting) styleOut.lighting = style.lighting;
@@ -131,21 +149,31 @@ export function serializeLayout(layout: Layout): string {
     if (style.medium) styleOut.medium = style.medium;
     if (style.art_style) styleOut.art_style = style.art_style;
   }
-  const palette = style.color_palette && style.color_palette.length ? style.color_palette : layout.color_palette;
-  if (palette && palette.length) styleOut.color_palette = palette;
+  const palette = upPalette(style.color_palette && style.color_palette.length ? style.color_palette : layout.color_palette, 16);
+  if (palette) styleOut.color_palette = palette;
+
+  // compositional_deconstruction -> { background, elements } (Ideogram shape).
+  const regions = layout.compositional_deconstruction;
+  let background = "";
+  let elementRegions = regions;
+  if (regions.length && isFullFrame(regions[0].bounding_box)) {
+    background = regions[0].description || "";
+    elementRegions = regions.slice(1);
+  }
+  const elements = elementRegions.map((r) => {
+    const isText = !!(r.text && r.text.length);
+    const el: Record<string, unknown> = isText
+      ? { type: "text", bbox: r.bounding_box, text: r.text, desc: r.description }
+      : { type: "obj", bbox: r.bounding_box, desc: r.description };
+    const rp = upPalette(r.color_palette, 5);
+    if (rp) el.color_palette = rp;
+    return el;
+  });
 
   const clean = {
     high_level_description: layout.high_level_description,
     style_description: styleOut,
-    compositional_deconstruction: layout.compositional_deconstruction.map((r) => {
-      const region: Record<string, unknown> = {
-        bounding_box: r.bounding_box,
-        description: r.description,
-      };
-      if (r.color_palette && r.color_palette.length) region.color_palette = r.color_palette;
-      if (r.text && r.text.length) region.text = r.text;
-      return region;
-    }),
+    compositional_deconstruction: { background, elements },
   };
   return JSON.stringify(clean);
 }

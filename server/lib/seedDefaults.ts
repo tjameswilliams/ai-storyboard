@@ -4,7 +4,11 @@ import { newId } from "./nanoid";
 
 // Bumped if we ever ship new/updated default styleguides and want them seeded
 // into existing installs on next launch.
-const SEED_FLAG = "defaultStyleguidesSeededV1";
+// Stored in settings as a number. Bump SEED_VERSION when the bundled default
+// styleguides change so existing installs get the update on next launch
+// (existing copies are upserted by name; a never-seen default is inserted).
+const SEED_KEY = "defaultStyleguidesVersion";
+const SEED_VERSION = 2;
 
 const MARVEL_NAME = "Marvel Comic Book Pages (Ideogram 4)";
 const MARVEL_DESCRIPTION =
@@ -21,25 +25,31 @@ You are an Ideogram 4.0 prompt engineer specializing in Marvel-style comic book 
 
     {
       "high_level_description": "...",
-      "style_description": "...",
+      "style_description": {
+        "aesthetics": "...",
+        "lighting": "...",
+        "medium": "illustration",
+        "art_style": "...",
+        "color_palette": ["#RRGGBB", "..."]
+      },
       "color_palette": ["#RRGGBB", "..."],
       "compositional_deconstruction": []
     }
 
-Key difference from standard Ideogram: style_description is a single string (not an object), and elements use bounding_box, description, color_palette, and text (not type/desc/bbox).
+You build the layout with the tools (set_high_level_description, set_style_description, set_color_palette, add_region with named edges x_min/y_min/x_max/y_max + description [+ text]) — you never write the JSON by hand. style_description is a structured OBJECT (aesthetics, lighting, medium, art_style, color_palette). Comic pages are illustrated, so use the ART path: set medium to "illustration"/"comic book art" and put the comic keywords in art_style — never use the photo/camera path.
 
 ## The 10 Core Rules for Marvel Comic Pages
 
 ### Rule 1 — High-Level Description
 One concise sentence describing the full-bleed main art, naming the characters, action, setting, and mood. Always mention "Marvel comic" and the key visual moment.
 
-### Rule 2 — Style Description String
-Pack all aesthetic info into a single comma-separated string:
-- Medium: always start with "digital illustration / comic book art"
-- Art style keywords: bold linework, cel-shaded coloring, halftone dot textures, Marvel house style, dynamic composition, 1344x768 high resolution
-- Lighting: dramatic directional lighting from lightsaber glow, deep comic-book shadows, rim lighting on characters
-- Mood: epic, dramatic, cinematic, emotionally charged
-- Always include "thick black panel borders, speed lines, motion blur effects" when relevant
+### Rule 2 — Style Description Object
+style_description is a structured object. For comic pages set these fields (set_style_description):
+- medium: "illustration" (or "comic book art").
+- art_style: the comic look — "bold linework, cel-shaded coloring, halftone dot textures, Marvel house style, dynamic composition, thick black panel borders, speed lines, motion blur". (Use art_style, NOT photo — never mix in camera/lens cues.)
+- aesthetics: the mood — "epic, dramatic, cinematic, emotionally charged".
+- lighting: "dramatic directional lighting from lightsaber glow, deep comic-book shadows, rim lighting on characters".
+- color_palette: the palette below (also set the frame's top-level palette).
 
 ### Rule 3 — Color Palette
 Always include at minimum (uppercase hex):
@@ -128,7 +138,13 @@ Use the text field for exact literal words to render.
 
     {
       "high_level_description": "A full-bleed Marvel comic establishing page showing a lush green alien planet with rolling hills, alien flora, a crashed starship smoldering in the distance, and two tiny figures facing off across a meadow, with a dramatic title banner inset and two character introduction oval insets.",
-      "style_description": "digital illustration / comic book art, bold linework, cel-shaded coloring, halftone dot textures, Marvel house style, dynamic composition, 1344x768 high resolution, dramatic atmospheric lighting, lush green alien world palette, cinematic establishing shot, epic scale, thick black panel borders",
+      "style_description": {
+        "aesthetics": "epic, dramatic, cinematic, lush green alien world, epic scale",
+        "lighting": "dramatic atmospheric lighting, deep comic-book shadows",
+        "medium": "illustration",
+        "art_style": "comic book art, bold linework, cel-shaded coloring, halftone dot textures, Marvel house style, dynamic composition, thick black panel borders",
+        "color_palette": ["#1A3A1A", "#2D5A2D", "#4A7C3F", "#F0F4FF", "#C8E0FF", "#CC0000", "#FF1A1A", "#0A0A0A", "#1C1C1C", "#D4A574", "#8B5E3C", "#D4A017", "#FFFFFF", "#FFB000", "#8B0000", "#2C1810"]
+      },
       "color_palette": ["#1A3A1A", "#2D5A2D", "#4A7C3F", "#F0F4FF", "#C8E0FF", "#CC0000", "#FF1A1A", "#0A0A0A", "#1C1C1C", "#D4A574", "#8B5E3C", "#D4A017", "#FFFFFF", "#FFB000", "#8B0000", "#2C1810"],
       "compositional_deconstruction": [
         {
@@ -159,7 +175,12 @@ Use the text field for exact literal words to render.
 
     {
       "high_level_description": "An explosive Marvel comic full-bleed action page showing the first lightsaber clash between Ahsoka and Vader, with a dramatic diagonal composition, white-hot impact sparks, and two floating inset detail panels.",
-      "style_description": "digital illustration / comic book art, bold linework, cel-shaded coloring, halftone dot textures, Marvel house style, dynamic composition, 1344x768 high resolution, dramatic directional lighting from lightsaber clash, explosive impact moment, speed lines radiating from impact point, thick black panel borders",
+      "style_description": {
+        "aesthetics": "epic, dramatic, cinematic, explosive impact moment",
+        "lighting": "dramatic directional lighting from lightsaber clash, deep comic-book shadows",
+        "medium": "illustration",
+        "art_style": "comic book art, bold linework, cel-shaded coloring, halftone dot textures, Marvel house style, dynamic composition, speed lines radiating from impact point, thick black panel borders"
+      },
       "compositional_deconstruction": [
         {
           "bounding_box": [0, 0, 1000, 1000],
@@ -205,37 +226,37 @@ const DEFAULTS: DefaultStyleguide[] = [
 ];
 
 /**
- * Seed bundled default styleguides on first run. Idempotent and gated by a
- * one-time settings flag, so deleting a default does not bring it back.
- * Returns the number of styleguides inserted.
+ * Seed/refresh bundled default styleguides. Runs once per SEED_VERSION: on a
+ * version bump it upserts each default by name (updating an existing copy's
+ * markdown/description, inserting if absent). Returns the count touched.
  */
 export async function seedDefaultStyleguides(): Promise<number> {
-  const [flag] = await db.select().from(schema.settings).where(eq(schema.settings.key, SEED_FLAG));
-  if (flag?.value === "1") return 0;
+  const [flag] = await db.select().from(schema.settings).where(eq(schema.settings.key, SEED_KEY));
+  const current = flag ? parseInt(flag.value, 10) || 0 : 0;
+  if (current >= SEED_VERSION) return 0;
 
   const now = new Date().toISOString();
-  let inserted = 0;
+  let touched = 0;
   for (const sg of DEFAULTS) {
-    const existing = await db.select({ id: schema.styleguides.id })
+    const [existing] = await db.select({ id: schema.styleguides.id })
       .from(schema.styleguides)
       .where(eq(schema.styleguides.name, sg.name));
-    if (existing.length > 0) continue;
-    await db.insert(schema.styleguides).values({
-      id: newId(),
-      name: sg.name,
-      description: sg.description,
-      markdown: sg.markdown,
-      createdAt: now,
-      updatedAt: now,
-    });
-    inserted++;
+    if (existing) {
+      await db.update(schema.styleguides)
+        .set({ description: sg.description, markdown: sg.markdown, updatedAt: now })
+        .where(eq(schema.styleguides.id, existing.id));
+    } else {
+      await db.insert(schema.styleguides).values({
+        id: newId(), name: sg.name, description: sg.description, markdown: sg.markdown, createdAt: now, updatedAt: now,
+      });
+    }
+    touched++;
   }
 
-  // Mark seeded so we never re-insert these defaults.
   if (flag) {
-    await db.update(schema.settings).set({ value: "1" }).where(eq(schema.settings.key, SEED_FLAG));
+    await db.update(schema.settings).set({ value: String(SEED_VERSION) }).where(eq(schema.settings.key, SEED_KEY));
   } else {
-    await db.insert(schema.settings).values({ key: SEED_FLAG, value: "1" });
+    await db.insert(schema.settings).values({ key: SEED_KEY, value: String(SEED_VERSION) });
   }
-  return inserted;
+  return touched;
 }
