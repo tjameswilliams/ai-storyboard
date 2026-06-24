@@ -19,6 +19,7 @@ function newRegion(): Omit<Region, "id"> {
 
 export function RegionInspector({ image }: { image: StoryboardImage }) {
   const selectedRegionIndex = useStore((s) => s.selectedRegionIndex);
+  const selectedRegionIndices = useStore((s) => s.selectedRegionIndices);
   const selectRegion = useStore((s) => s.selectRegion);
   const patchImageLayout = useStore((s) => s.patchImageLayout);
 
@@ -60,7 +61,9 @@ export function RegionInspector({ image }: { image: StoryboardImage }) {
 
       {!region || selectedRegionIndex == null ? (
         <div className="text-[10px] text-zinc-600 italic">
-          Select a region on the canvas, or add one.
+          {selectedRegionIndices.length >= 2
+            ? `${selectedRegionIndices.length} regions selected — drag the group handles on the canvas to move/resize, or press Delete. Click one (or Ctrl/Cmd-click) to edit individually.`
+            : "Select a region on the canvas (Ctrl/Cmd-click to add more), or add one."}
         </div>
       ) : (
         <>

@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { useStore } from "../../store";
 import { BBoxOverlay, REGION_COLORS } from "./BBoxOverlay";
+import { GroupSelection } from "./GroupSelection";
 import type { StoryboardImage, Project, BoundingBox, Layout } from "../../types";
-import type { Rect } from "../../lib/bbox";
+import { clampBox, type Rect } from "../../lib/bbox";
 
 export function ImageCanvas({ image, project }: { image: StoryboardImage; project: Project }) {
   const patchImageLayout = useStore((s) => s.patchImageLayout);
   const selectRegion = useStore((s) => s.selectRegion);
   const selectedRegionIndex = useStore((s) => s.selectedRegionIndex);
+  const selectedRegionIndices = useStore((s) => s.selectedRegionIndices);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -62,6 +64,48 @@ export function ImageCanvas({ image, project }: { image: StoryboardImage; projec
     };
     patchImageLayout(image.id, next);
   };
+
+  // Selected regions (valid indices) for the group overlay.
+  const selectedRegions = selectedRegionIndices
+    .filter((i) => i >= 0 && i < regions.length)
+    .map((i) => ({ index: i, box: regions[i].bounding_box }));
+
+  const applyGroupBoxes = (updates: { index: number; box: BoundingBox }[]) => {
+    const map = new Map(updates.map((u) => [u.index, clampBox(u.box)]));
+    const next: Layout = {
+      ...image.layout,
+      compositional_deconstruction: image.layout.compositional_deconstruction.map((r, i) =>
+        map.has(i) ? { ...r, bounding_box: map.get(i)! } : r,
+      ),
+    };
+    patchImageLayout(image.id, next);
+  };
+
+  const deleteSelected = () => {
+    if (selectedRegionIndices.length === 0) return;
+    const set = new Set(selectedRegionIndices);
+    const next: Layout = {
+      ...image.layout,
+      compositional_deconstruction: image.layout.compositional_deconstruction.filter((_, i) => !set.has(i)),
+    };
+    patchImageLayout(image.id, next);
+    selectRegion(null);
+  };
+
+  // Delete/Backspace removes the selected region(s) (unless typing in a field).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      if (selectedRegionIndices.length === 0) return;
+      const el = document.activeElement;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || (el as HTMLElement).isContentEditable)) return;
+      e.preventDefault();
+      deleteSelected();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRegionIndices, image.id, image.layout]);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     const el = frameRef.current;
@@ -119,6 +163,16 @@ export function ImageCanvas({ image, project }: { image: StoryboardImage; projec
                 onCommit={(box) => commitRegionBox(index, box)}
               />
             ))}
+
+          {/* Group selection — move/resize/delete all selected boxes at once */}
+          {rect.w > 0 && selectedRegions.length >= 2 && (
+            <GroupSelection
+              regions={selectedRegions}
+              rect={rect}
+              onChange={applyGroupBoxes}
+              onDelete={deleteSelected}
+            />
+          )}
         </div>
       </div>
 

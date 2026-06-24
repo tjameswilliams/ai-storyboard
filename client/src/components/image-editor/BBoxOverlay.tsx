@@ -25,10 +25,11 @@ export function BBoxOverlay({
   rect: Rect;
   onCommit: (box: BoundingBox) => void;
 }) {
-  const selectedRegionIndex = useStore((s) => s.selectedRegionIndex);
+  const selectedRegionIndices = useStore((s) => s.selectedRegionIndices);
   const hoveredRegionIndex = useStore((s) => s.hoveredRegionIndex);
   const dragPreview = useStore((s) => s.dragPreview);
   const selectRegion = useStore((s) => s.selectRegion);
+  const toggleRegionSelection = useStore((s) => s.toggleRegionSelection);
   const setHoveredRegion = useStore((s) => s.setHoveredRegion);
   const setDragPreview = useStore((s) => s.setDragPreview);
 
@@ -39,7 +40,7 @@ export function BBoxOverlay({
     startBox: BoundingBox;
   } | null>(null);
 
-  const selected = selectedRegionIndex === index;
+  const selected = selectedRegionIndices.includes(index);
   const hovered = hoveredRegionIndex === index;
   const color = REGION_COLORS[index % REGION_COLORS.length];
 
@@ -51,6 +52,8 @@ export function BBoxOverlay({
   const beginDrag = (mode: "move" | Handle) => (e: React.MouseEvent) => {
     // Left button only — let right-click bubble up to the canvas stack picker.
     if (e.button !== 0) return;
+    // Ctrl/Cmd is for multi-select toggling (handled on click), not dragging.
+    if (e.metaKey || e.ctrlKey) return;
     e.preventDefault();
     e.stopPropagation();
     selectRegion(index);
@@ -116,7 +119,8 @@ export function BBoxOverlay({
       onMouseLeave={() => setHoveredRegion(null)}
       onClick={(e) => {
         e.stopPropagation();
-        selectRegion(index);
+        if (e.metaKey || e.ctrlKey) toggleRegionSelection(index);
+        else selectRegion(index);
       }}
       className="absolute"
       style={{

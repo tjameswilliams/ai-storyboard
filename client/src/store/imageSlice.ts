@@ -69,6 +69,7 @@ export const createImageSlice: StateCreator<AppState, [], [], ImageSlice> = (set
     set({
       selectedImageId: id,
       selectedRegionIndex: null,
+      selectedRegionIndices: [],
       hoveredRegionIndex: null,
       dragPreview: null,
       jsonError: null,
