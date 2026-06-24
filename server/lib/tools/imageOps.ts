@@ -3,7 +3,7 @@ import { db, schema } from "../../db/client";
 import { eq, asc, sql } from "drizzle-orm";
 import { newId } from "../nanoid";
 import { recordAction } from "../undoManager";
-import { parseLayout, stringifyLayout, validateLayout, emptyLayout, clampBox, type Layout, type Region } from "../layout";
+import { parseLayout, stringifyLayout, validateLayout, emptyLayout, clampBox, transformLayout, type Layout, type LayoutTransform, type Region } from "../layout";
 
 type ImageRow = typeof schema.images.$inferSelect;
 
@@ -212,6 +212,16 @@ export const imageOpsTools: Record<string, ToolHandler> = {
       const idx = layout.compositional_deconstruction.findIndex((r) => r.id === args.region_id);
       if (idx === -1) throw new Error(`Region ${args.region_id} not found`);
       layout.compositional_deconstruction.splice(idx, 1);
+    }),
+
+  // Re-map ALL boxes at once — the one-shot fix when a whole layout came out
+  // rotated/transposed relative to the canvas (e.g. portrait laid out landscape).
+  transform_layout: (args, projectId, undoContext) =>
+    mutateLayout(args.image_id as string, projectId, undoContext, "transform_layout", (layout) => {
+      const op = args.transform as LayoutTransform;
+      const valid: LayoutTransform[] = ["transpose", "rotate_cw", "rotate_ccw", "rotate_180", "flip_h", "flip_v"];
+      if (!valid.includes(op)) throw new Error(`transform must be one of: ${valid.join(", ")}`);
+      return transformLayout(layout, op);
     }),
 
   set_plain_prompt: async (args, projectId, undoContext) => {

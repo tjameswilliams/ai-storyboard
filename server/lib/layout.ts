@@ -116,6 +116,34 @@ export function serializeLayout(layout: Layout): string {
   return JSON.stringify(clean);
 }
 
+export type LayoutTransform = "transpose" | "rotate_cw" | "rotate_ccw" | "rotate_180" | "flip_h" | "flip_v";
+
+// Map a point (x,y) in the 0..1000 grid under a transform. Used to re-map a whole
+// layout when the agent laid it out rotated/transposed for the canvas.
+function transformPoint(op: LayoutTransform, x: number, y: number): [number, number] {
+  switch (op) {
+    case "transpose": return [y, x];                 // swap axes (fixes horizontal/vertical mix-ups)
+    case "rotate_cw": return [1000 - y, x];          // 90° clockwise
+    case "rotate_ccw": return [y, 1000 - x];         // 90° counter-clockwise
+    case "rotate_180": return [1000 - x, 1000 - y];
+    case "flip_h": return [1000 - x, y];             // mirror left↔right
+    case "flip_v": return [x, 1000 - y];             // mirror top↔bottom
+  }
+}
+
+/** Re-map every region's bounding box under a coordinate transform. */
+export function transformLayout(layout: Layout, op: LayoutTransform): Layout {
+  return {
+    ...layout,
+    compositional_deconstruction: layout.compositional_deconstruction.map((r) => {
+      const [yMin, xMin, yMax, xMax] = r.bounding_box;
+      const [ax, ay] = transformPoint(op, xMin, yMin);
+      const [bx, by] = transformPoint(op, xMax, yMax);
+      return { ...r, bounding_box: clampBox([Math.min(ay, by), Math.min(ax, bx), Math.max(ay, by), Math.max(ax, bx)]) };
+    }),
+  };
+}
+
 /** Clamp a bounding box to the 0..1000 grid with a minimum size, integer-rounded. */
 export function clampBox(box: [number, number, number, number]): [number, number, number, number] {
   const MIN = 10;

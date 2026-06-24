@@ -1,6 +1,7 @@
 import type { StateCreator } from "zustand";
 import { api } from "../api/client";
 import type { StoryboardImage, Layout } from "../types";
+import { transformLayoutBoxes, type LayoutTransform } from "../lib/bbox";
 import type { AppState } from "./index";
 
 const GRID_KEY = "sb.gridColumns";
@@ -37,6 +38,7 @@ export interface ImageSlice {
   reorderImages: (orderedIds: string[]) => Promise<void>;
   updateImageLayout: (id: string, layout: Layout) => Promise<void>;
   patchImageLayout: (id: string, layout: Layout) => void;
+  transformLayout: (id: string, op: LayoutTransform) => void;
   generateImage: (id: string, opts?: { regenerate?: boolean }) => Promise<void>;
   regenerateAll: () => Promise<void>;
   setGridColumns: (n: number) => void;
@@ -146,6 +148,12 @@ export const createImageSlice: StateCreator<AppState, [], [], ImageSlice> = (set
           .catch((e) => console.error("[store] patchImageLayout persist failed", e));
       }, PATCH_DELAY),
     );
+  },
+
+  transformLayout: (id, op) => {
+    const img = get().images.find((i) => i.id === id);
+    if (!img) return;
+    get().patchImageLayout(id, transformLayoutBoxes(img.layout, op));
   },
 
   generateImage: async (id, opts) => {

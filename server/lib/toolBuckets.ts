@@ -46,7 +46,7 @@ export const TOOL_BUCKETS: readonly ToolBucket[] = [
       "create_image", "delete_image", "reorder_image",
       "update_image_layout", "patch_image_layout",
       "set_high_level_description", "set_style_description", "set_color_palette",
-      "add_region", "update_region", "delete_region",
+      "add_region", "update_region", "delete_region", "transform_layout",
       "set_plain_prompt",
     ],
   },

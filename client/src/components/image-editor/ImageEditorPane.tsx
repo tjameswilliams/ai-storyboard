@@ -1,6 +1,17 @@
+import { useEffect, useState } from "react";
 import { useStore } from "../../store";
 import { ImageCanvas } from "./ImageCanvas";
 import { InspectorColumn } from "./InspectorColumn";
+import type { LayoutTransform } from "../../lib/bbox";
+
+const TRANSFORMS: { op: LayoutTransform; label: string }[] = [
+  { op: "transpose", label: "Transpose (swap H ↔ V)" },
+  { op: "rotate_cw", label: "Rotate 90° ⟳" },
+  { op: "rotate_ccw", label: "Rotate 90° ⟲" },
+  { op: "rotate_180", label: "Rotate 180°" },
+  { op: "flip_h", label: "Flip horizontal" },
+  { op: "flip_v", label: "Flip vertical" },
+];
 
 export function ImageEditorPane() {
   const project = useStore((s) => s.project)!;
@@ -10,6 +21,15 @@ export function ImageEditorPane() {
   const generateImage = useStore((s) => s.generateImage);
   const generatingImageIds = useStore((s) => s.generatingImageIds);
   const openViewer = useStore((s) => s.openViewer);
+  const transformLayout = useStore((s) => s.transformLayout);
+  const [showTransform, setShowTransform] = useState(false);
+
+  useEffect(() => {
+    if (!showTransform) return;
+    const close = () => setShowTransform(false);
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [showTransform]);
 
   const index = images.findIndex((i) => i.id === selectedImageId);
   const image = index >= 0 ? images[index] : undefined;
@@ -68,6 +88,35 @@ export function ImageEditorPane() {
         )}
 
         <div className="flex-1" />
+
+        {/* Transform: re-map all boxes to fix a rotated/transposed layout */}
+        <div className="relative">
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowTransform((v) => !v); }}
+            disabled={image.layout.compositional_deconstruction.length === 0}
+            className="text-xs px-2 py-1 rounded border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 disabled:opacity-40"
+            title="Re-map all boxes (fix a rotated/transposed layout)"
+          >
+            ⤢ Transform ▾
+          </button>
+          {showTransform && (
+            <div
+              className="absolute right-0 mt-1 z-50 min-w-[200px] bg-zinc-900 border border-zinc-700 rounded-md shadow-xl py-1 text-xs"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-zinc-500 border-b border-zinc-800">Re-map all boxes</div>
+              {TRANSFORMS.map((t) => (
+                <button
+                  key={t.op}
+                  onMouseDown={(e) => { e.stopPropagation(); transformLayout(image.id, t.op); setShowTransform(false); }}
+                  className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-800"
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <button
           onClick={() => openViewer(index)}

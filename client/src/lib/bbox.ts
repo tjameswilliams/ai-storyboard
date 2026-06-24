@@ -1,4 +1,6 @@
-import type { BoundingBox } from "../types";
+import type { BoundingBox, Layout } from "../types";
+
+export type LayoutTransform = "transpose" | "rotate_cw" | "rotate_ccw" | "rotate_180" | "flip_h" | "flip_v";
 
 /**
  * Bounding boxes use the Ideogram-4 format: [y_min, x_min, y_max, x_max] on a
@@ -55,4 +57,28 @@ export function clampBox(box: BoundingBox): BoundingBox {
     else yMin = yMax - MIN_SIZE;
   }
   return [yMin, xMin, yMax, xMax];
+}
+
+function transformPoint(op: LayoutTransform, x: number, y: number): [number, number] {
+  switch (op) {
+    case "transpose": return [y, x];
+    case "rotate_cw": return [1000 - y, x];
+    case "rotate_ccw": return [y, 1000 - x];
+    case "rotate_180": return [1000 - x, 1000 - y];
+    case "flip_h": return [1000 - x, y];
+    case "flip_v": return [x, 1000 - y];
+  }
+}
+
+/** Re-map every region's bounding box under a coordinate transform. */
+export function transformLayoutBoxes(layout: Layout, op: LayoutTransform): Layout {
+  return {
+    ...layout,
+    compositional_deconstruction: layout.compositional_deconstruction.map((r) => {
+      const [yMin, xMin, yMax, xMax] = r.bounding_box;
+      const [ax, ay] = transformPoint(op, xMin, yMin);
+      const [bx, by] = transformPoint(op, xMax, yMax);
+      return { ...r, bounding_box: clampBox([Math.min(ay, by), Math.min(ax, bx), Math.max(ay, by), Math.max(ax, bx)]) };
+    }),
+  };
 }

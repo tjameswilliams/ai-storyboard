@@ -272,6 +272,14 @@ export function getToolDefinitions() {
       properties: { image_id: imageId, region_id: { type: "string" } },
       required: ["image_id", "region_id"],
     }),
+    fn("transform_layout", "Re-map ALL of a frame's boxes at once with a coordinate transform. Use this to fix a whole layout that came out rotated/transposed for the canvas (e.g. a portrait scene laid out as if landscape): 'transpose' swaps the horizontal and vertical axes (the usual fix); 'rotate_cw'/'rotate_ccw' rotate 90°, 'rotate_180', 'flip_h' mirrors left↔right, 'flip_v' mirrors top↔bottom.", {
+      type: "object",
+      properties: {
+        image_id: imageId,
+        transform: { type: "string", enum: ["transpose", "rotate_cw", "rotate_ccw", "rotate_180", "flip_h", "flip_v"], description: "The coordinate transform to apply to every box." },
+      },
+      required: ["image_id", "transform"],
+    }),
     fn("set_plain_prompt", "For plaintext-format projects: set the frame's plain text prompt (and optional negative prompt).", {
       type: "object",
       properties: { image_id: imageId, prompt: { type: "string" }, negative_prompt: { type: "string" } },
