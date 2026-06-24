@@ -232,8 +232,18 @@ export function getToolDefinitions() {
     fn("set_high_level_description", "Set the frame's high_level_description (overall scene).", {
       type: "object", properties: { image_id: imageId, text: { type: "string" } }, required: ["image_id", "text"],
     }),
-    fn("set_style_description", "Set the frame's style_description (aesthetic, lighting, medium, mood, palette).", {
-      type: "object", properties: { image_id: imageId, text: { type: "string" } }, required: ["image_id", "text"],
+    fn("set_style_description", "Set the frame's style_description — Ideogram 4's structured style OBJECT (not prose). Provide any of: aesthetics (mood keywords), lighting, medium, and EITHER art_style (illustrated/stylized) OR photo (camera/lens for photographs) — never both. Fields merge; pass an empty string to clear one.", {
+      type: "object",
+      properties: {
+        image_id: imageId,
+        aesthetics: { type: "string", description: "Mood/aesthetic keywords, e.g. 'moody, cinematic, desaturated'." },
+        lighting: { type: "string", description: "Lighting, e.g. 'golden hour, rim light, deep shadows'." },
+        medium: { type: "string", description: "Medium: photograph | illustration | 3d_render | painting | graphic_design." },
+        art_style: { type: "string", description: "Art style for non-photographic media, e.g. 'flat vector illustration, bold outlines'. Mutually exclusive with photo." },
+        photo: { type: "string", description: "Camera/lens for photographs, e.g. '35mm, f/1.4, shallow depth of field'. Mutually exclusive with art_style." },
+        color_palette: hexArray,
+      },
+      required: ["image_id"],
     }),
     fn("set_color_palette", "Set the frame's top-level color_palette (array of hex colors).", {
       type: "object", properties: { image_id: imageId, palette: hexArray }, required: ["image_id", "palette"],

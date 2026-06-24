@@ -81,9 +81,19 @@ export interface Region {
   text?: string;
 }
 
+// Ideogram 4 style_description is a structured object (photo XOR art_style).
+export interface StyleDescription {
+  aesthetics?: string;
+  lighting?: string;
+  medium?: string;
+  photo?: string;
+  art_style?: string;
+  color_palette?: string[];
+}
+
 export interface Layout {
   high_level_description: string;
-  style_description: string;
+  style_description: StyleDescription;
   color_palette: string[];
   compositional_deconstruction: Region[];
 }

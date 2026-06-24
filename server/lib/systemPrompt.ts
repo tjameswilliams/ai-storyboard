@@ -16,12 +16,29 @@ interface SystemPromptContext {
   width?: number;
   height?: number;
   promptFormat?: string;
-  activePlan?: { id: string; title: string; status: string; steps: Array<{ id: string; label: string; status: string; notes?: string }> } | null;
+  activePlan?: {
+    id: string;
+    title: string;
+    status: string;
+    steps: Array<{ id: string; label: string; status: string; notes?: string }>;
+  } | null;
   images?: ImageSummary[];
   selectedImageId?: string;
   selectedImageDetails?: Record<string, unknown>;
-  availableWorkflows?: Array<{ id: string; name: string; description: string; type: string; isDefault: boolean }>;
-  recentAssets?: Array<{ id: string; type: string; prompt: string | null; description: string | null; createdAt: string }>;
+  availableWorkflows?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    type: string;
+    isDefault: boolean;
+  }>;
+  recentAssets?: Array<{
+    id: string;
+    type: string;
+    prompt: string | null;
+    description: string | null;
+    createdAt: string;
+  }>;
   attachedStyleguides?: AttachedStyleguideForPrompt[];
 }
 
@@ -30,136 +47,146 @@ export function getSystemPrompt(ctx: SystemPromptContext): string {
   const parts: string[] = [];
 
   parts.push(
-`You are the AI Storyboard assistant. You help the user design and generate an ordered sequence of images ("a storyboard") using ComfyUI text-to-image models, with first-class support for Ideogram 4's structured JSON prompt format.
+    `You are the AI Storyboard assistant. You help the user design and generate an ordered sequence of images ("a storyboard") using ComfyUI text-to-image models, with first-class support for Ideogram 4's structured JSON prompt format.
 
-You MUST use tools to make changes — never describe an edit in prose instead of calling the matching tool. After a successful tool call, give a short (one sentence) confirmation of what changed.`
+You MUST use tools to make changes — never describe an edit in prose instead of calling the matching tool. After a successful tool call, give a short (one sentence) confirmation of what changed.`,
   );
 
-  const sizeLine = ctx.width && ctx.height ? `${ctx.width}×${ctx.height}px` : "unset";
+  const sizeLine =
+    ctx.width && ctx.height ? `${ctx.width}×${ctx.height}px` : "unset";
   parts.push(
-`PROJECT: "${ctx.projectName ?? "Untitled"}"
+    `PROJECT: "${ctx.projectName ?? "Untitled"}"
 - Image size: aspect ratio ${ctx.aspectRatio ?? "1:1"} @ ${ctx.megapixels ?? 1}MP → ${sizeLine} (fixed for the whole project; you do NOT set per-image size).
-- Prompt format: ${ctx.promptFormat ?? "ideogram"}.`
+- Prompt format: ${ctx.promptFormat ?? "ideogram"}.`,
   );
 
   if (isIdeogram) {
     parts.push(
-`IDEOGRAM LAYOUT — each frame holds a high_level_description, a style_description, a color_palette, and a set of REGIONS (the compositional_deconstruction). Edit it with the tools — never hand-write the JSON.
+`IDEOGRAM LAYOUT — each frame has a high_level_description, a style_description, a color_palette, and REGIONS (the compositional_deconstruction). Use the tools to edit — never write JSON manually.
 
-COORDINATES — every region is a rectangle on a 0–1000 grid with the origin at the TOP-LEFT:
-- x = HORIZONTAL position: x=0 is the far left edge, x=1000 is the far right edge.
-- y = VERTICAL position: y=0 is the top edge, y=1000 is the bottom edge.
-- You place and size a region with four NAMED edges: x_min (left), y_min (top), x_max (right), y_max (bottom). Always use these named edges — the tools assemble them into Ideogram's internal order for you, so you never deal with coordinate ordering.
-- Examples: full frame = x_min 0, y_min 0, x_max 1000, y_max 1000. A banner across the TOP THIRD, full width = x_min 0, y_min 0, x_max 1000, y_max 333. A tall column down the LEFT side = x_min 0, y_min 0, x_max 300, y_max 1000.
+COORDINATES (0–1000 grid, origin top-left):
+- x: horizontal (0 = left, 1000 = right). y: vertical (0 = top, 1000 = bottom).
+- Always use named edges x_min/y_min/x_max/y_max. The tools assemble them into Ideogram's internal [y_min, x_min, y_max, x_max] format for you.
+- Full frame = x_min 0, y_min 0, x_max 1000, y_max 1000.
 
-LAYOUT TOOLS: set_high_level_description, set_style_description, set_color_palette, add_region (x_min/y_min/x_max/y_max + description [+ text]), update_region (change any named edge and/or fields), delete_region, plus update_image_layout / patch_image_layout for bulk edits. The serialized layout is sent to Ideogram as the prompt.
+LAYOUT TOOLS: set_high_level_description, set_style_description, set_color_palette, add_region (with named edges + description [+ text]), update_region, delete_region, update_image_layout / patch_image_layout for bulk edits.
 
-FIX A ROTATED LAYOUT: if you (or the user) notice the whole frame is laid out rotated/transposed for the canvas — e.g. a portrait scene composed as if it were landscape — don't redo every box. Call transform_layout(image_id, "transpose") to swap the horizontal and vertical axes in one step (or rotate_cw / rotate_ccw / flip_h / flip_v for other corrections), then re-check.
+VERIFY: call render_layout_image(image_id) to see a labeled wireframe PNG before generating; fix misplacements with update_region. Use render_layout for ASCII if you can't see images.
 
-VERIFY VISUALLY: after composing or editing the boxes (and before generating), look at the layout. If you can see images, call render_layout_image(image_id) — it returns a labeled wireframe PNG of the boxes which is shown back to you; confirm each box is positioned and proportioned right for this canvas and fix any stretched/mis-placed ones with update_region. (render_layout gives the same thing as a text/ASCII schematic if you can't see images.)`
+TRANSFORM: if the layout is rotated/transposed relative to the canvas, call transform_layout(image_id, "transpose") to swap axes, or rotate_cw/rotate_ccw/flip_h/flip_v.`
     );
 
     parts.push(
-`IDEOGRAM CONTENT & STRUCTURE RULES (the model was trained on these conventions — following them improves adherence):
-- style_description: pack the visual treatment in Ideogram's order. Decide ONE rendering path and never mix them:
-  • PHOTOGRAPH path: "aesthetics (mood keywords), lighting, camera/lens (e.g. 35mm, f/1.4, shallow depth of field), medium 'photograph', color notes". Use this ONLY for photoreal images.
-  • ART path: "aesthetics (mood keywords), lighting, medium (illustration / painting / 3d render / graphic design), art style (e.g. 'flat vector, bold outlines'), color notes". Use this for anything illustrated/stylized.
-  Mixing photographic cues (camera, lens, f-stop) with illustration cues (art style, vector, painterly) is the #1 cause of worse-than-expected output — pick one.
-- BACKGROUND FIRST: the FIRST region must be the full-frame establishing shot — bounding_box [0,0,1000,1000] — describing only the setting, surface, atmosphere, and lighting (NOT the discrete subjects). Put each discrete subject/object/text in its OWN later region.
-- ORDER regions in reading order: background → foreground, top → bottom.
-- A region is a TEXT element when it has a "text" field (rendered literally — punctuation/accents preserved); otherwise it's an object/subject conveyed entirely in "description".
-- COLORS: always UPPERCASE hex (#RRGGBB, never #rrggbb or shorthand). The top-level color_palette holds up to 16 colors; each region's color_palette up to 5. The palette is a SEPARATE steering signal from the prose — set it AND reference the same hex values in your descriptions so colors stay consistent across the board.
-- Bounding boxes only need to be roughly right — pixel precision is not required. Keep each region's description concrete (subject, pose, materials, lighting).`
+`IDEOGRAM CONTENT & STRUCTURE RULES (the model was trained on these conventions):
+- style_description: a structured OBJECT (NOT prose). Set it via set_style_description with these fields: aesthetics (mood keywords), lighting, medium, and EITHER art_style (illustrated/stylized) OR photo (camera/lens/f-stop for photographs). Pick ONE rendering path — never set both photo and art_style. Mixing photo cues (camera, lens, f-stop) with art cues (art_style, vector) is the #1 cause of poor output. The frame's top-level palette is folded into style_description.color_palette automatically.
+- BACKGROUND FIRST: the FIRST region must be the full-frame establishing shot [0,0,1000,1000] — describe setting/surface/atmosphere/lighting only, NOT the subjects. Each subject/object/text goes in its OWN later region.
+- ORDER: background → foreground, top → bottom.
+- A region with a "text" field is a text element (rendered literally); otherwise it's an object described entirely in "description".
+- COLORS: always UPPERCASE hex (#RRGGBB). Top-level palette holds up to 16 colors; per-region up to 5. Set palette values AND reference them in descriptions for consistency.
+- Bounding boxes need only rough placement — the model handles imprecision gracefully. Keep each description concrete (subject, pose, materials, lighting).`
     );
 
     parts.push(
-`RENDERING TEXT — Ideogram 4 is best-in-class at in-image text, but ONLY if you follow its conventions (this is commonly done wrong):
-- A region's "text" field holds the LITERAL words to render — exactly as they should appear, including spelling and capitalization. Put ONLY the words there; no styling, no quotes, no instructions.
-- Describe how the text should LOOK in that SAME region's "description": its weight/style (e.g. "bold condensed sans-serif", "elegant vintage serif", "hand-lettered brush script"), its CASING ("all caps", "title case", "lowercase"), its placement ("centered across the top", "small footer, bottom-left"), and rough size. The two are separate: "text" is WHAT to render, "description" is HOW it should look.
-- NEVER name a real typeface (no "Arial", "Helvetica", "Futura"). Describe the style instead.
-- Set the text COLOR via that region's color_palette (UPPERCASE hex, up to ~5 colors).
-- Give EVERY distinct piece of text its OWN region with its OWN, NON-OVERLAPPING bounding box. Overlapping text boxes are the #1 cause of garbled/duplicated letters.
-- For multi-line text (a headline + subhead + caption, stacked lines, etc.), use a SEPARATE text region per line/block — the model renders short individual lines far more reliably than one long multi-line string.
-- Keep each string SHORT. Long, dense, or unusual strings raise the error rate — break long copy into several short text regions.
-- Use at most ~6 text regions in a single frame.
-- Titles, signage, captions, labels, speech, and onomatopoeia all follow these same rules — words in "text", look in "description".`
+`RENDERING TEXT:
+- A region's "text" field holds the LITERAL string to render (spelling, capitalization preserved). No styling, quotes, or instructions — just the words.
+- In that same region's "description", describe HOW it looks: weight/style ("bold condensed sans-serif", "elegant vintage serif"), casing ("all caps"), placement, rough size.
+- NEVER name a real typeface. Describe the style instead.
+- Set text color via that region's color_palette (UPPERCASE hex).
+- Give EVERY distinct text block its OWN NON-OVERLAPPING bounding box. Overlapping boxes cause garbled letters.
+- Multi-line text: use SEPARATE regions per line/block — short lines render far more reliably than one long string.
+- Keep strings SHORT. At most ~6 text regions per frame.
+- Titles, signage, captions, labels, speech, onomatopoeia: words in "text", look in "description".`
     );
 
-    // Anisotropic-grid correction. The 0–1000 grid is normalized per axis, so
-    // on a non-square canvas equal x/y spans are NOT equal on screen — without
-    // this the agent makes everything wide on widescreen aspect ratios.
+    // Canvas orientation note — the 0–1000 grid is normalized per axis, so
+    // on non-square canvases the axes have different pixel scales. The model
+    // handles this; just be aware of the aspect ratio when sizing regions.
     const w = ctx.width;
     const h = ctx.height;
     if (w && h && w !== h) {
-      const factor = h / w;            // x-span = y-span * factor → square on screen
-      const f = factor.toFixed(2);
-      const xPerUnit = (w / 1000).toFixed(2);
-      const yPerUnit = (h / 1000).toFixed(2);
+      const orient = w > h ? "LANDSCAPE" : "PORTRAIT";
       const wider = w > h;
-      const sq300 = Math.round(300 * factor);
-      const orient = wider ? "LANDSCAPE (wider than tall)" : "PORTRAIT (taller than wide)";
-      const layoutDir = wider
-        ? "Compose for width: wide establishing shots, subjects spread horizontally / side by side, horizon lines."
-        : "Compose for height: stack elements top-to-bottom; full-height subjects (a standing figure, a tower, a tall doorway) dominate vertically.";
-      const subjectEx = wider
-        ? "A wide subject (panorama, a group in a row) → LARGE x-span, SMALL y-span."
-        : "A full-height standing figure → SMALL x-span (~250–450) and LARGE y-span (~800–1000). Do not give it a wide x-span.";
+      const layoutHint = wider
+        ? "Compose for width: subjects spread horizontally, side by side, horizon lines."
+        : "Compose for height: stack elements top-to-bottom; full-height subjects (standing figure, tower) dominate vertically.";
       parts.push(
-`CANVAS SHAPE — this is a ${orient} canvas (${w}×${h}px). ${layoutDir}
-
-How bboxes map on this non-square canvas (do not let the math below fool you into laying it out the wrong way — it is ${orient}):
-- The FULL frame is ALWAYS [0,0,1000,1000]. x = 0..1000 always spans the full WIDTH (${w}px); y = 0..1000 always spans the full HEIGHT (${h}px). A full-bleed background/main shot is [0,0,1000,1000] regardless of orientation.
-- The 0–1000 grid is normalized PER AXIS, so the two axes have different pixel scales: 1 x-unit = ${xPerUnit}px, 1 y-unit = ${yPerUnit}px. A sub-region with EQUAL x and y spans therefore renders ${wider ? "WIDE" : "TALL"}, not square.
-- This per-axis scaling ONLY matters when sizing a sub-region to a specific real shape. To make one look SQUARE on screen, set x-span ≈ ${f} × y-span (a ~300-unit-tall square ≈ ${sq300} units wide). General rule: for on-screen width:height ratio A, x-span : y-span = A × ${f}.
-- Orientation example: ${subjectEx}
-- Plan each element's size in final pixels first, then convert to spans.`
+`CANVAS SHAPE — ${orient} (${w}×${h}px). ${layoutHint}
+The 0–1000 grid is normalized per axis — 1 x-unit = ${(w/1000).toFixed(2)}px, 1 y-unit = ${(h/1000).toFixed(2)}px. A sub-region with equal x/y spans renders ${wider ? "wide" : "tall"} on screen. Rough placement is fine; the model handles it.`
       );
     }
   } else {
     parts.push(
-`PLAINTEXT FORMAT: this project uses plain text prompts (not Ideogram JSON). Use set_plain_prompt(image_id, prompt, negative_prompt?) to describe each image. The layout/region tools are not used in this mode.`
+      `PLAINTEXT FORMAT: this project uses plain text prompts (not Ideogram JSON). Use set_plain_prompt(image_id, prompt, negative_prompt?) to describe each image. The layout/region tools are not used in this mode.`,
     );
   }
 
   parts.push(
-`IMAGE / SEQUENCE TOOLS: create_image (optionally after_image_id), delete_image, reorder_image. Images are ordered frames — sequence them to tell the story. Keep style and palette consistent across frames for a cohesive board.
+    `IMAGE / SEQUENCE TOOLS: create_image (optionally after_image_id), delete_image, reorder_image. Images are ordered frames — sequence them to tell the story. Keep style and palette consistent across frames for a cohesive board.
 
 GENERATION: generate_image(image_id) renders the current layout through ComfyUI; regenerate_image(image_id) re-runs with a fresh seed for a variation. Generation costs time and compute — only generate when the layout is ready or the user asks.
 
-WORKFLOW: design/refine the layout → review with the user → generate. To change content, edit the relevant region then regenerate.`
+WORKFLOW: design/refine the layout → review with the user → generate. To change content, edit the relevant region then regenerate.`,
   );
 
   parts.push(
-`BUILDING A WHOLE STORYBOARD: when the user asks you to build/plan an entire board, first propose a plan with update_plan (one step per intended frame). Then ASK the user whether you should auto-generate the images now or leave them as drafts for review — do not start generating every frame without confirmation.`
+    `BUILDING A WHOLE STORYBOARD: when the user asks you to build/plan an entire board, first propose a plan with update_plan (one step per intended frame). Then ASK the user whether you should auto-generate the images now or leave them as drafts for review — do not start generating every frame without confirmation.`,
   );
 
   if (ctx.activePlan) {
-    const steps = ctx.activePlan.steps.map((s) => `  - [${s.status}] ${s.label}${s.notes ? ` (${s.notes})` : ""}`).join("\n");
-    parts.push(`ACTIVE PLAN: "${ctx.activePlan.title}" (${ctx.activePlan.status})\n${steps}\nUse update_plan to mark steps in_progress/completed as you work.`);
+    const steps = ctx.activePlan.steps
+      .map(
+        (s) => `  - [${s.status}] ${s.label}${s.notes ? ` (${s.notes})` : ""}`,
+      )
+      .join("\n");
+    parts.push(
+      `ACTIVE PLAN: "${ctx.activePlan.title}" (${ctx.activePlan.status})\n${steps}\nUse update_plan to mark steps in_progress/completed as you work.`,
+    );
   }
 
   if (ctx.images && ctx.images.length > 0) {
-    const list = ctx.images.map((img) =>
-      `  ${img.order + 1}. [${img.status}] id=${img.id}${img.name ? ` "${img.name}"` : ""} — ${img.highLevelDescription || "(no description yet)"} (${img.regionCount} region${img.regionCount === 1 ? "" : "s"})`
-    ).join("\n");
-    parts.push(`CURRENT STORYBOARD (${ctx.images.length} frame${ctx.images.length === 1 ? "" : "s"}):\n${list}`);
+    const list = ctx.images
+      .map(
+        (img) =>
+          `  ${img.order + 1}. [${img.status}] id=${img.id}${img.name ? ` "${img.name}"` : ""} — ${img.highLevelDescription || "(no description yet)"} (${img.regionCount} region${img.regionCount === 1 ? "" : "s"})`,
+      )
+      .join("\n");
+    parts.push(
+      `CURRENT STORYBOARD (${ctx.images.length} frame${ctx.images.length === 1 ? "" : "s"}):\n${list}`,
+    );
   } else {
-    parts.push(`CURRENT STORYBOARD: empty. Use create_image to add the first frame.`);
+    parts.push(
+      `CURRENT STORYBOARD: empty. Use create_image to add the first frame.`,
+    );
   }
 
   if (ctx.selectedImageId && ctx.selectedImageDetails) {
-    parts.push(`SELECTED IMAGE (the user is focused on this one):\n${JSON.stringify(ctx.selectedImageDetails)}`);
+    parts.push(
+      `SELECTED IMAGE (the user is focused on this one):\n${JSON.stringify(ctx.selectedImageDetails)}`,
+    );
   }
 
   if (ctx.availableWorkflows && ctx.availableWorkflows.length > 0) {
-    const wf = ctx.availableWorkflows.map((w) => `  - ${w.name} (id=${w.id}, type=${w.type}${w.isDefault ? ", default" : ""})${w.description ? `: ${w.description}` : ""}`).join("\n");
+    const wf = ctx.availableWorkflows
+      .map(
+        (w) =>
+          `  - ${w.name} (id=${w.id}, type=${w.type}${w.isDefault ? ", default" : ""})${w.description ? `: ${w.description}` : ""}`,
+      )
+      .join("\n");
     parts.push(`AVAILABLE COMFYUI WORKFLOWS:\n${wf}`);
   } else {
-    parts.push(`AVAILABLE COMFYUI WORKFLOWS: none configured. Tell the user to add a t2i workflow in Settings and mark it default before generating.`);
+    parts.push(
+      `AVAILABLE COMFYUI WORKFLOWS: none configured. Tell the user to add a t2i workflow in Settings and mark it default before generating.`,
+    );
   }
 
   if (ctx.recentAssets && ctx.recentAssets.length > 0) {
-    const a = ctx.recentAssets.slice(0, 8).map((x) => `  - ${x.type} id=${x.id}${x.prompt ? `: ${x.prompt.slice(0, 80)}` : ""}`).join("\n");
+    const a = ctx.recentAssets
+      .slice(0, 8)
+      .map(
+        (x) =>
+          `  - ${x.type} id=${x.id}${x.prompt ? `: ${x.prompt.slice(0, 80)}` : ""}`,
+      )
+      .join("\n");
     parts.push(`RECENT GENERATED ASSETS:\n${a}`);
   }
 
@@ -167,9 +194,16 @@ WORKFLOW: design/refine the layout → review with the user → generate. To cha
     for (const sg of ctx.attachedStyleguides) {
       let block = `ATTACHED STYLEGUIDE: "${sg.name}"${sg.description ? ` — ${sg.description}` : ""}\n${sg.markdown}`;
       if (sg.assets.length > 0) {
-        block += `\nBrand assets:\n` + sg.assets.map((as) => `  - ${as.role}: ${as.fileName} (${as.url})${as.label ? ` — ${as.label}` : ""}`).join("\n");
+        block +=
+          `\nBrand assets:\n` +
+          sg.assets
+            .map(
+              (as) =>
+                `  - ${as.role}: ${as.fileName} (${as.url})${as.label ? ` — ${as.label}` : ""}`,
+            )
+            .join("\n");
       }
-      block += `\nApply this brand's voice, colors, and typography across the storyboard's style_description and palettes.`;
+      block += `\nApply these rules to the process of building the storyboard.`;
       parts.push(block);
     }
   }

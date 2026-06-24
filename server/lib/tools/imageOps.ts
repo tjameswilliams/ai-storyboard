@@ -160,9 +160,32 @@ export const imageOpsTools: Record<string, ToolHandler> = {
       layout.high_level_description = String(args.text ?? "");
     }),
 
+  // style_description is a structured OBJECT (Ideogram 4 format). Fields merge,
+  // so partial updates work; photo and art_style are mutually exclusive.
   set_style_description: (args, projectId, undoContext) =>
     mutateLayout(args.image_id as string, projectId, undoContext, "set_style_description", (layout) => {
-      layout.style_description = String(args.text ?? "");
+      const cur: Record<string, unknown> = { ...(layout.style_description ?? {}) };
+      const setStr = (k: string, v: unknown) => {
+        if (v === undefined) return;
+        const s = String(v).trim();
+        if (s) cur[k] = s; else delete cur[k];
+      };
+      setStr("aesthetics", args.aesthetics);
+      setStr("lighting", args.lighting);
+      setStr("medium", args.medium);
+      if (args.photo !== undefined) {
+        const s = String(args.photo).trim();
+        if (s) { cur.photo = s; delete cur.art_style; } else delete cur.photo;
+      }
+      if (args.art_style !== undefined) {
+        const s = String(args.art_style).trim();
+        if (s) { cur.art_style = s; delete cur.photo; } else delete cur.art_style;
+      }
+      if (args.color_palette !== undefined) {
+        if (Array.isArray(args.color_palette) && args.color_palette.length) cur.color_palette = args.color_palette;
+        else delete cur.color_palette;
+      }
+      layout.style_description = cur as Layout["style_description"];
     }),
 
   set_color_palette: (args, projectId, undoContext) =>

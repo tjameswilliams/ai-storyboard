@@ -12,6 +12,24 @@ import { newId } from "./nanoid";
 
 const hexColor = z.string().regex(/^#?[0-9a-fA-F]{3,8}$/, "must be a hex color");
 
+// Ideogram 4 style_description is a structured OBJECT (not prose), with photo
+// and art_style mutually exclusive. All fields optional so partial styles work.
+export const StyleObjectSchema = z.object({
+  aesthetics: z.string().optional(),   // mood keywords, e.g. "moody, cinematic, desaturated"
+  lighting: z.string().optional(),     // e.g. "golden hour, rim light"
+  medium: z.string().optional(),       // "photograph" | "illustration" | "3d_render" | "painting" | "graphic_design"
+  photo: z.string().optional(),        // camera/lens for photographs — exclusive with art_style
+  art_style: z.string().optional(),    // for non-photos — exclusive with photo
+  color_palette: z.array(hexColor).optional(),
+});
+export type StyleDescription = z.infer<typeof StyleObjectSchema>;
+
+// Accept the canonical object, or a legacy prose string (wrapped into aesthetics).
+const styleField = z.preprocess(
+  (v) => (typeof v === "string" ? (v.trim() ? { aesthetics: v } : {}) : v),
+  StyleObjectSchema,
+).default({});
+
 // Accept regions written with named edges (x_min/y_min/x_max/y_max) and
 // normalize to Ideogram's y-first bounding_box, so the agent can never
 // transpose the axes regardless of which path it uses.
@@ -40,7 +58,7 @@ export const RegionSchema = z.preprocess(coerceRegionInput, z.object({
 
 export const LayoutSchema = z.object({
   high_level_description: z.string().default(""),
-  style_description: z.string().default(""),
+  style_description: styleField,
   color_palette: z.array(hexColor).default([]),
   compositional_deconstruction: z.array(RegionSchema).default([]),
 });
@@ -51,7 +69,7 @@ export type Layout = z.infer<typeof LayoutSchema>;
 export function emptyLayout(): Layout {
   return {
     high_level_description: "",
-    style_description: "",
+    style_description: {},
     color_palette: [],
     compositional_deconstruction: [],
   };
@@ -99,10 +117,26 @@ export function stringifyLayout(layout: Layout): string {
  * fields stripped (they're internal), and empty optional fields omitted.
  */
 export function serializeLayout(layout: Layout): string {
+  const style = layout.style_description ?? {};
+  // Emit style_description in Ideogram's canonical key order; the top-level
+  // color_palette (editor convenience) flows into style_description.color_palette,
+  // matching the guide. photo and art_style are mutually exclusive.
+  const styleOut: Record<string, unknown> = {};
+  if (style.aesthetics) styleOut.aesthetics = style.aesthetics;
+  if (style.lighting) styleOut.lighting = style.lighting;
+  if (style.photo) {
+    styleOut.photo = style.photo;
+    if (style.medium) styleOut.medium = style.medium;
+  } else {
+    if (style.medium) styleOut.medium = style.medium;
+    if (style.art_style) styleOut.art_style = style.art_style;
+  }
+  const palette = style.color_palette && style.color_palette.length ? style.color_palette : layout.color_palette;
+  if (palette && palette.length) styleOut.color_palette = palette;
+
   const clean = {
     high_level_description: layout.high_level_description,
-    style_description: layout.style_description,
-    color_palette: layout.color_palette,
+    style_description: styleOut,
     compositional_deconstruction: layout.compositional_deconstruction.map((r) => {
       const region: Record<string, unknown> = {
         bounding_box: r.bounding_box,
