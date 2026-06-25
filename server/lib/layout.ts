@@ -129,6 +129,17 @@ function isFullFrame([y0, x0, y1, x1]: [number, number, number, number]): boolea
   return x0 <= 50 && y0 <= 50 && x1 >= 950 && y1 >= 950;
 }
 
+// The docs set no hard length limit, but runaway prose dilutes the prompt — cap
+// description fields generously (prefer a word boundary). Literal `text` is left
+// untouched (it's rendered verbatim, so it must not gain an ellipsis).
+const DESC_CAP = 1000;
+function cap(s: string, max = DESC_CAP): string {
+  if (!s || s.length <= max) return s;
+  const cut = s.slice(0, max);
+  const sp = cut.lastIndexOf(" ");
+  return (sp > max * 0.6 ? cut.slice(0, sp) : cut).trimEnd() + "…";
+}
+
 /**
  * Serialize a layout into Ideogram 4's canonical structured prompt:
  *  { high_level_description, style_description:{...}, compositional_deconstruction:{ background, elements:[{type,bbox,...}] } }
@@ -157,21 +168,21 @@ export function serializeLayout(layout: Layout): string {
   let background = "";
   let elementRegions = regions;
   if (regions.length && isFullFrame(regions[0].bounding_box)) {
-    background = regions[0].description || "";
+    background = cap(regions[0].description || "");
     elementRegions = regions.slice(1);
   }
   const elements = elementRegions.map((r) => {
     const isText = !!(r.text && r.text.length);
     const el: Record<string, unknown> = isText
-      ? { type: "text", bbox: r.bounding_box, text: r.text, desc: r.description }
-      : { type: "obj", bbox: r.bounding_box, desc: r.description };
+      ? { type: "text", bbox: r.bounding_box, text: r.text, desc: cap(r.description) }
+      : { type: "obj", bbox: r.bounding_box, desc: cap(r.description) };
     const rp = upPalette(r.color_palette, 5);
     if (rp) el.color_palette = rp;
     return el;
   });
 
   const clean = {
-    high_level_description: layout.high_level_description,
+    high_level_description: cap(layout.high_level_description),
     style_description: styleOut,
     compositional_deconstruction: { background, elements },
   };

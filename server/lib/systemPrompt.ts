@@ -83,7 +83,8 @@ TRANSFORM: if the layout is rotated/transposed relative to the canvas, call tran
 - ORDER: background → foreground, top → bottom.
 - A region with a "text" field is a text element (rendered literally); otherwise it's an object described entirely in "description".
 - COLORS: always UPPERCASE hex (#RRGGBB). Top-level palette holds up to 16 colors; per-region up to 5. Set palette values AND reference them in descriptions for consistency.
-- Bounding boxes need only rough placement — the model handles imprecision gracefully. Keep each description concrete (subject, pose, materials, lighting).`
+- Bounding boxes need only rough placement — the model handles imprecision gracefully. Keep each description concrete (subject, pose, materials, lighting).
+- KEEP IT TIGHT: there's no hard length limit, but concise beats verbose. high_level_description = 1–2 sentences; each region description a few sentences at most; keep the literal "text" short. Aim to keep the whole prompt focused (well under ~200 words of prose total) — rambling dilutes adherence. (Extremely long description fields are trimmed automatically.)`
     );
 
     parts.push(
