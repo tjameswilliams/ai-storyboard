@@ -17,6 +17,9 @@ export interface StyleguideSlice {
 
   loadStyleguides: () => Promise<void>;
   loadStyleguide: (id: string) => Promise<void>;
+  /** Re-fetch only the active styleguide's detail (markdown/assets) without
+   *  touching the chat conversation — safe to call mid-run. */
+  refreshActiveStyleguide: () => Promise<void>;
   clearActiveStyleguide: () => void;
   createStyleguide: (name?: string) => Promise<Styleguide>;
   updateStyleguide: (id: string, patch: { name?: string; description?: string; markdown?: string }) => Promise<void>;
@@ -72,6 +75,20 @@ export const createStyleguideSlice: StateCreator<AppState, [], [], StyleguideSli
       await get().loadMessages();
     } catch (e) {
       console.error("[styleguide] load failed", e);
+    }
+  },
+
+  refreshActiveStyleguide: async () => {
+    const id = get().activeStyleguideId;
+    if (!id) return;
+    try {
+      const sg = await api.getStyleguide(id);
+      set({
+        activeStyleguide: sg,
+        styleguides: get().styleguides.map((s) => (s.id === id ? { ...s, ...sg } : s)),
+      });
+    } catch (e) {
+      console.error("[styleguide] refresh failed", e);
     }
   },
 

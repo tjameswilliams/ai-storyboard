@@ -152,6 +152,17 @@ export interface ChatAttachment {
   type: string;
 }
 
+/** Summary of an active agent run, returned by GET /runs/active. */
+export interface RunSummary {
+  runId: string;
+  scope: "project" | "image" | "styleguide";
+  conversationId: string;
+  key: string; // `${scope}:${id}`
+  projectId: string | null;
+  status: "running" | "complete" | "error" | "cancelled" | "interrupted";
+  assistantMsgId: string;
+}
+
 export interface PlanStep {
   id: string;
   label: string;

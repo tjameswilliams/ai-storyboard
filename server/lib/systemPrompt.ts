@@ -73,6 +73,8 @@ LAYOUT TOOLS: set_high_level_description, set_style_description, set_color_palet
 
 VERIFY: call render_layout_image(image_id) to see a labeled wireframe PNG before generating; fix misplacements with update_region. Use render_layout for ASCII if you can't see images.
 
+INSPECT THE RENDER: after a frame is generated — or whenever the user asks you to look at / check / critique a frame — call view_image(image_id) to pull the ACTUAL generated picture and look at it. Compare it against the intended description and layout; if it's wrong (composition, missing elements, proportions, text), make the edits and regenerate, then view_image again to confirm.
+
 TRANSFORM: if the layout is rotated/transposed relative to the canvas, call transform_layout(image_id, "transpose") to swap axes, or rotate_cw/rotate_ccw/flip_h/flip_v.`
     );
 

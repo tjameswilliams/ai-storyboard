@@ -4,6 +4,7 @@ import { createProjectSlice, type ProjectSlice } from "./projectSlice";
 import { createImageSlice, type ImageSlice } from "./imageSlice";
 import { createRegionEditorSlice, type RegionEditorSlice } from "./regionEditorSlice";
 import { createChatSlice, type ChatSlice } from "./chatSlice";
+import { createRunsSlice, type RunsSlice } from "./runsSlice";
 import { createFolderSlice, type FolderSlice } from "./folderSlice";
 import { createAssetSlice, type AssetSlice } from "./assetSlice";
 import { createStyleguideSlice, type StyleguideSlice } from "./styleguideSlice";
@@ -37,6 +38,7 @@ export type AppState =
   & ImageSlice
   & RegionEditorSlice
   & ChatSlice
+  & RunsSlice
   & AssetSlice
   & StyleguideSlice
   & FolderSlice
@@ -51,6 +53,7 @@ export const useStore = create<AppState>((...a) => {
     ...createImageSlice(...a),
     ...createRegionEditorSlice(...a),
     ...createChatSlice(...a),
+    ...createRunsSlice(...a),
     ...createFolderSlice(...a),
     ...createAssetSlice(...a),
     ...createStyleguideSlice(...a),

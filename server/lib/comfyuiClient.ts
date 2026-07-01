@@ -1061,8 +1061,12 @@ export async function resolveWorkflow(
 
   if (workflowId) {
     const [row] = await db.select().from(schema.workflows).where(eq(schema.workflows.id, workflowId));
-    if (!row || row.pluginId !== pluginId || disabledIds.has(row.id)) return null;
-    return row;
+    // Honor an explicit id when it's a valid, enabled workflow for this plugin.
+    if (row && row.pluginId === pluginId && !disabledIds.has(row.id)) return row;
+    // Otherwise the id is stale/deleted/disabled (commonly a project's
+    // defaultWorkflowId pointing at a removed workflow). Fall through to the
+    // type-based default so a single available workflow is still used instead
+    // of hard-failing with "No t2i workflow configured".
   }
 
   // Find default for this type

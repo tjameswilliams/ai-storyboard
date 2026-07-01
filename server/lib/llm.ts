@@ -201,6 +201,14 @@ export function getToolDefinitions() {
     fn("render_layout_image", "Render an actual labeled WIREFRAME IMAGE of a frame's bounding boxes (no generated picture) and attach it for you to look at. Call this after composing or editing a layout to visually confirm the boxes are positioned and proportioned correctly for the canvas, then fix anything that looks stretched or misplaced. Preferred over render_layout when you can see images.", {
       type: "object", properties: { image_id: imageId }, required: ["image_id"],
     }),
+    fn("view_image", "Pull a frame's actual GENERATED picture and look at it (requires a vision-capable model). Use this to visually inspect a rendered frame — judge whether it matches the intended high-level description, composition, proportions, and any text — then decide what to fix and how. The image is attached for you to see. Only works on frames that have already been generated; optionally pass asset_id to inspect a specific generated/downloaded asset instead of the frame's current render.", {
+      type: "object",
+      properties: {
+        image_id: imageId,
+        asset_id: { type: "string", description: "Optional: view this specific asset (e.g. a past render or a downloaded reference) instead of the frame's current generated image." },
+      },
+      required: ["image_id"],
+    }),
 
     // --- Layout editing ---
     fn("create_image", "Add a new storyboard frame. Optionally insert it right after an existing frame; otherwise it is appended to the end.", {

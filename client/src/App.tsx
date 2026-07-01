@@ -36,6 +36,9 @@ export default function App() {
     loadFolders();
     loadSettings();
     loadStyleguides();
+    // Poll active agent runs app-wide so status badges reflect background work
+    // across all frames and projects, not just the one on screen.
+    useStore.getState().startRunStatusPolling();
   }, []);
 
   useEffect(() => {

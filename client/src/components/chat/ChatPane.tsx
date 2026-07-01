@@ -287,6 +287,14 @@ export function ChatPane() {
   const chatScope = useStore((s) => s.chatScope);
   const setChatScope = useStore((s) => s.setChatScope);
   const selectedImage = useStore((s) => s.images.find((i) => i.id === s.selectedImageId));
+  // Background-run indicators for the two scopes, so you can see the project
+  // main thread working while viewing a frame's side chat (and vice versa).
+  const projectThreadWorking = useStore(
+    (s) => !!s.project && s.activeRuns[`project:${s.project.id}`]?.status === "running",
+  );
+  const frameThreadWorking = useStore(
+    (s) => !!s.selectedImageId && s.activeRuns[`image:${s.selectedImageId}`]?.status === "running",
+  );
   const [input, setInput] = useState("");
   const workflows = useStore((s) => s.workflows);
   const loadingWorkflows = useStore((s) => s.loadingWorkflows);
@@ -450,15 +458,17 @@ export function ChatPane() {
             <button
               type="button"
               onClick={() => setChatScope("project")}
-              className={`px-2 py-0.5 rounded-[3px] transition-colors ${chatScope === "project" ? "bg-zinc-700 text-fg-1" : "text-fg-muted hover:text-fg-2"}`}
+              className={`px-2 py-0.5 rounded-[3px] transition-colors inline-flex items-center gap-1 ${chatScope === "project" ? "bg-zinc-700 text-fg-1" : "text-fg-muted hover:text-fg-2"}`}
             >
+              {projectThreadWorking && <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" title="Agent working" />}
               Project
             </button>
             <button
               type="button"
               onClick={() => setChatScope("image")}
-              className={`px-2 py-0.5 rounded-[3px] transition-colors ${chatScope === "image" ? "bg-zinc-700 text-fg-1" : "text-fg-muted hover:text-fg-2"}`}
+              className={`px-2 py-0.5 rounded-[3px] transition-colors inline-flex items-center gap-1 ${chatScope === "image" ? "bg-zinc-700 text-fg-1" : "text-fg-muted hover:text-fg-2"}`}
             >
+              {frameThreadWorking && <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" title="Agent working" />}
               This frame
             </button>
           </div>

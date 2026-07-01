@@ -16,6 +16,10 @@ dist/
 electron/dist/
 release/
 build/
+*.tsbuildinfo
+
+# Claude Code agent memory (internal working notes, not project docs)
+memory/
 
 # Environment
 .env

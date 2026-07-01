@@ -5,6 +5,7 @@ import images from "./routes/images";
 import messages from "./routes/messages";
 import settingsRoutes from "./routes/settings";
 import chat from "./routes/chat";
+import runs from "./routes/runs";
 import uploads from "./routes/uploads";
 import mcpServerRoutes from "./routes/mcpServers";
 import undo from "./routes/undo";
@@ -16,6 +17,8 @@ import styleguideRoutes from "./routes/styleguides";
 import exportRoutes from "./routes/export";
 import { mcpClientManager } from "./lib/mcp/clientManager";
 import { seedDefaultStyleguides } from "./lib/seedDefaults";
+import { reconcileInterruptedRuns } from "./lib/agentRuns";
+import { reconcileStreamingMessages } from "./lib/chatPersistence";
 
 const app = new Hono();
 
@@ -23,6 +26,13 @@ const app = new Hono();
 seedDefaultStyleguides()
   .then((n) => { if (n > 0) console.log(`[seed] inserted ${n} default styleguide(s)`); })
   .catch((err) => console.error("[seed] default styleguides failed:", err));
+
+// No in-memory runs survive a restart, so any durable run row still marked
+// "running" (and any assistant message still "streaming") was orphaned — flip
+// them so the UI doesn't show ghost in-flight work.
+Promise.all([reconcileInterruptedRuns(), reconcileStreamingMessages()])
+  .then(([r, m]) => { if (r > 0 || m > 0) console.log(`[runs] reconciled ${r} interrupted run(s), ${m} streaming message(s)`); })
+  .catch((err) => console.error("[runs] reconcile failed:", err));
 
 app.use("/api/*", cors({ origin: "*" }));
 
@@ -33,6 +43,7 @@ app.route("/api", images);
 app.route("/api", messages);
 app.route("/api", settingsRoutes);
 app.route("/api", chat);
+app.route("/api", runs);
 app.route("/api", uploads);
 app.route("/api", mcpServerRoutes);
 app.route("/api", undo);

@@ -29,6 +29,9 @@ export const createProjectSlice: StateCreator<AppState, [], [], ProjectSlice> = 
     set({ projects });
   },
   loadProject: async (id: string) => {
+    // Detach the previous project's focused stream before swapping state, so it
+    // can't write into the new project's messages while everything loads.
+    get().detachFocusedStream();
     const project = await api.getProject(id);
     // Reset all storyboard + chat state. Clearing activeStyleguideId keeps
     // project/styleguide modes mutually exclusive.
@@ -43,6 +46,10 @@ export const createProjectSlice: StateCreator<AppState, [], [], ProjectSlice> = 
       messages: [],
       messagesLoaded: false,
       contextStatus: null,
+      // Detach the previous project's focused stream (its run keeps running in
+      // the background and still reports status via the active-runs poll).
+      isStreaming: false,
+      focusedRunId: null,
       activeStyleguideId: null,
       activeStyleguide: null,
     });
@@ -52,6 +59,8 @@ export const createProjectSlice: StateCreator<AppState, [], [], ProjectSlice> = 
       get().loadActivePlan(),
       get().loadProjectStyleguides(),
     ]);
+    // Attach to the new project's main-thread run if one is in flight.
+    await get().focusConversation();
   },
   createProject: async (input) => {
     const project = await api.createProject(input);

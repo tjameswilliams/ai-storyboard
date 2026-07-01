@@ -1,34 +1,20 @@
 import { Hono } from "hono";
 import { db, schema } from "../db/client";
-import { eq } from "drizzle-orm";
-import { newId } from "../lib/nanoid";
+import { eq, asc } from "drizzle-orm";
 
 const app = new Hono();
+
+// Reads + clears only. Message *writes* are owned server-side by the agent-run
+// system (see chatPersistence.ts), not the client, so there are no POST routes.
 
 app.get("/projects/:projectId/messages", async (c) => {
   const projectId = c.req.param("projectId");
   const rows = await db
     .select()
     .from(schema.chatMessages)
-    .where(eq(schema.chatMessages.projectId, projectId));
+    .where(eq(schema.chatMessages.projectId, projectId))
+    .orderBy(asc(schema.chatMessages.createdAt));
   return c.json(rows);
-});
-
-app.post("/projects/:projectId/messages", async (c) => {
-  const projectId = c.req.param("projectId");
-  const body = await c.req.json();
-  const id = newId();
-  await db.insert(schema.chatMessages).values({
-    id,
-    projectId,
-    role: body.role,
-    content: body.content || "",
-    thinking: body.thinking || null,
-    toolCalls: body.toolCalls ? JSON.stringify(body.toolCalls) : null,
-    segments: body.segments ? JSON.stringify(body.segments) : null,
-    createdAt: new Date().toISOString(),
-  });
-  return c.json({ id }, 201);
 });
 
 app.delete("/projects/:projectId/messages", async (c) => {
@@ -44,25 +30,9 @@ app.get("/images/:imageId/messages", async (c) => {
   const rows = await db
     .select()
     .from(schema.imageChatMessages)
-    .where(eq(schema.imageChatMessages.imageId, imageId));
+    .where(eq(schema.imageChatMessages.imageId, imageId))
+    .orderBy(asc(schema.imageChatMessages.createdAt));
   return c.json(rows);
-});
-
-app.post("/images/:imageId/messages", async (c) => {
-  const imageId = c.req.param("imageId");
-  const body = await c.req.json();
-  const id = body.id || newId();
-  await db.insert(schema.imageChatMessages).values({
-    id,
-    imageId,
-    role: body.role,
-    content: body.content || "",
-    thinking: body.thinking || null,
-    toolCalls: body.toolCalls ? JSON.stringify(body.toolCalls) : null,
-    segments: body.segments ? JSON.stringify(body.segments) : null,
-    createdAt: body.createdAt || new Date().toISOString(),
-  });
-  return c.json({ id }, 201);
 });
 
 app.delete("/images/:imageId/messages", async (c) => {

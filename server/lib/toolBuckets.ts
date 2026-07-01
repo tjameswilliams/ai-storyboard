@@ -21,6 +21,7 @@ export const TOOL_BUCKETS: readonly ToolBucket[] = [
       "describe_image",
       "render_layout",
       "render_layout_image",
+      "view_image",
       "update_plan",
     ],
   },

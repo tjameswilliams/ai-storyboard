@@ -1,5 +1,6 @@
 import { api } from "../../api/client";
 import { useStore } from "../../store";
+import { makeConversationKey } from "../../lib/conversationKey";
 import type { StoryboardImage, Project } from "../../types";
 
 const STATUS_STYLE: Record<StoryboardImage["status"], { label: string; cls: string }> = {
@@ -33,6 +34,10 @@ export function StoryboardCell({
   const selectImage = useStore((s) => s.selectImage);
   const generatingImageIds = useStore((s) => s.generatingImageIds);
   const isGenerating = image.status === "generating" || generatingImageIds.has(image.id);
+  // Is an agent run working this frame's side conversation in the background?
+  const agentWorking = useStore(
+    (s) => s.activeRuns[makeConversationKey("image", image.id)]?.status === "running",
+  );
 
   const status = STATUS_STYLE[image.status];
   const desc = image.layout.high_level_description?.trim();
@@ -72,6 +77,17 @@ export function StoryboardCell({
         <div className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-black/60 text-white text-[10px] font-semibold flex items-center justify-center">
           {index + 1}
         </div>
+
+        {/* Agent-working indicator: this frame's side chat has a run in flight. */}
+        {agentWorking && (
+          <div
+            className="absolute bottom-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-600/80 text-white text-[9px] font-medium"
+            title="Agent is working on this frame"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+            Agent
+          </div>
+        )}
 
         {/* Status chip */}
         <div className={`absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded text-[9px] font-medium ${status.cls}`}>

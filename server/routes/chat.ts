@@ -1,34 +1,66 @@
 import { Hono } from "hono";
-import { streamChat, getToolDefinitions, getContextWindowSize, summarizeConversation } from "../lib/llm";
+import { getToolDefinitions, getContextWindowSize, summarizeConversation } from "../lib/llm";
 import { db, schema } from "../db/client";
 import { eq, and, asc, notInArray } from "drizzle-orm";
 import { newId } from "../lib/nanoid";
 import { getSystemPrompt } from "../lib/systemPrompt";
+import { getStyleguideSystemPrompt } from "../lib/styleguideSystemPrompt";
+import { getStyleguideToolDefinitions, executeStyleguideToolCall } from "../lib/tools/styleguideOps";
 import { loadAttachedStyleguides } from "../lib/styleguideContext";
-import { executeToolCall } from "../lib/toolExecutor";
-import { generateGroupId } from "../lib/undoManager";
 import { mcpClientManager } from "../lib/mcp/clientManager";
 import { getUploadsDir } from "../lib/config";
 import {
   processAttachments,
-  estimateFullContextUsage,
-  compactToolResults,
-  isPlanStillRunning,
   stripImageContentWithVisionFallback,
-  detectToolNarration,
 } from "../lib/chatHelpers";
 import { getComfyDisabledWorkflowIds } from "../lib/comfyuiClient";
 import { getDisabledToolBuckets, filterToolsByBuckets } from "../lib/toolBuckets";
 import { parseLayout } from "../lib/layout";
-import { readFile, unlink } from "fs/promises";
-import { resolve } from "path";
+import {
+  conversationKeyFromRequest,
+  makeConversationKey,
+  type ConversationRef,
+} from "../lib/conversationKey";
+import { registry, RunConflictError } from "../lib/agentRuns";
+import { runAgentLoop, type AgentLoopContext, type AgentLoopDeps } from "../lib/agentLoop";
+import { persistUserMessage } from "../lib/chatPersistence";
 
 const app = new Hono();
 
-app.post("/chat", async (c) => {
-  const body = await c.req.json();
-  const { messages: clientMessages, projectId, selectedImageId } = body;
+/** Thrown by a context builder when its target conversation doesn't exist. */
+class ConversationNotFound extends Error {}
 
+/** The scope-specific pieces the agent loop needs, assembled per request. */
+interface LoopSetup {
+  conversation: AgentLoopContext["conversation"];
+  allTools: unknown[];
+  toolsJson: string;
+  systemPrompt: string;
+  visionCapable: boolean;
+  activePlanContext: AgentLoopContext["activePlanContext"];
+  /** projectId for tool execution + run grouping (null for styleguide chat). */
+  projectId: string | null;
+  /** Loop dependency overrides — styleguide chat swaps in its own tool executor. */
+  deps?: Partial<AgentLoopDeps>;
+}
+
+/** Resolve attachments and drop empty assistant messages (shared by every scope). */
+async function processClientMessages(clientMessages: any[]) {
+  return (
+    await Promise.all(clientMessages.map(processAttachments))
+  ).filter((m: { role: string; content: unknown }) => {
+    if (m.role !== "assistant") return true;
+    if (Array.isArray(m.content)) return m.content.length > 0;
+    return typeof m.content === "string" && m.content.trim().length > 0;
+  });
+}
+
+/** Build the loop context for project- and image-scoped chats (the storyboard agent). */
+async function buildProjectContext(
+  projectId: string | null,
+  selectedImageId: string | null,
+  clientMessages: unknown[],
+): Promise<LoopSetup> {
   const [project] = projectId
     ? await db.select().from(schema.projects).where(eq(schema.projects.id, projectId))
     : [null];
@@ -68,13 +100,17 @@ app.post("/chat", async (c) => {
     .map((w) => ({ id: w.id, name: w.name, description: w.description || "", type: w.workflowType, isDefault: w.isDefault === 1 }));
 
   // Active plan.
-  let activePlanContext: { id: string; title: string; status: string; steps: Array<{ id: string; label: string; status: string; notes?: string }> } | null = null;
+  let activePlanContext:
+    | { id: string; title: string; status: string; steps: Array<{ id: string; label: string; status: string; notes?: string }> }
+    | null = null;
   if (projectId) {
     const [planRow] = await db.select().from(schema.plans)
       .where(and(eq(schema.plans.projectId, projectId), notInArray(schema.plans.status, ["completed", "cancelled"])))
       .limit(1);
     if (planRow) {
-      activePlanContext = { id: planRow.id, title: planRow.title, status: planRow.status, steps: JSON.parse(planRow.steps) };
+      let steps: Array<{ id: string; label: string; status: string; notes?: string }> = [];
+      try { steps = JSON.parse(planRow.steps); } catch { /* corrupt plan steps — treat as empty */ }
+      activePlanContext = { id: planRow.id, title: planRow.title, status: planRow.status, steps };
     }
   }
 
@@ -101,7 +137,7 @@ app.post("/chat", async (c) => {
     promptFormat: project?.promptFormat,
     activePlan: activePlanContext,
     images,
-    selectedImageId,
+    selectedImageId: selectedImageId ?? undefined,
     selectedImageDetails,
     availableWorkflows: availableWorkflows.length > 0 ? availableWorkflows : undefined,
     recentAssets,
@@ -117,33 +153,18 @@ app.post("/chat", async (c) => {
   const baseTools = getToolDefinitions();
   const disabledBuckets = projectId ? await getDisabledToolBuckets(projectId) : new Set<string>();
   let tools = filterToolsByBuckets(baseTools, disabledBuckets);
-  // render_layout_image only makes sense for vision models — hide it otherwise
-  // so the agent uses the ASCII render_layout instead.
-  if (!visionCapable) tools = tools.filter((t) => t.function?.name !== "render_layout_image");
+  // render_layout_image and view_image only make sense for vision models — hide
+  // them otherwise so the agent uses the ASCII render_layout / text inspection.
+  if (!visionCapable) {
+    const visionOnly = new Set(["render_layout_image", "view_image"]);
+    tools = tools.filter((t) => !visionOnly.has(t.function?.name ?? ""));
+  }
   const externalTools = mcpClientManager.getAllToolDefinitions();
   const allTools = [...tools, ...externalTools];
-  const toolsJson = JSON.stringify(allTools);
-  const maxTurns = 500;
-  let turnCount = 0;
-  let consecutiveErrors = 0;
 
-  const processedMessages = (
-    await Promise.all(clientMessages.map(processAttachments))
-  ).filter((m: { role: string; content: unknown }) => {
-    if (m.role !== "assistant") return true;
-    if (Array.isArray(m.content)) return m.content.length > 0;
-    return typeof m.content === "string" && m.content.trim().length > 0;
-  });
-
-  const conversation: Array<{
-    role: string;
-    content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
-    tool_calls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }>;
-    tool_call_id?: string;
-    reasoning_content?: string;
-  }> = [
+  const conversation: AgentLoopContext["conversation"] = [
     { role: "system", content: systemPrompt },
-    ...processedMessages,
+    ...(await processClientMessages(clientMessages)),
   ];
 
   // Text-only model: drop any attached image content up front so we never send
@@ -152,319 +173,131 @@ app.post("/chat", async (c) => {
     await stripImageContentWithVisionFallback(conversation, getUploadsDir());
   }
 
+  return {
+    conversation,
+    allTools,
+    toolsJson: JSON.stringify(allTools),
+    systemPrompt,
+    visionCapable,
+    activePlanContext,
+    projectId: projectId ?? null,
+  };
+}
+
+/** Build the loop context for styleguide chat: styleguide prompt, styleguide
+ *  tools, and a tool executor bound to this styleguide. */
+async function buildStyleguideContext(styleguideId: string, clientMessages: unknown[]): Promise<LoopSetup> {
+  const [sg] = await db.select().from(schema.styleguides).where(eq(schema.styleguides.id, styleguideId));
+  if (!sg) throw new ConversationNotFound("Styleguide not found");
+
+  const systemPrompt = await getStyleguideSystemPrompt(styleguideId);
+  const allTools = getStyleguideToolDefinitions();
+
+  const conversation: AgentLoopContext["conversation"] = [
+    { role: "system", content: systemPrompt },
+    ...(await processClientMessages(clientMessages)),
+  ];
+
+  return {
+    conversation,
+    allTools,
+    toolsJson: JSON.stringify(allTools),
+    systemPrompt,
+    // Styleguide editing has no storyboard, plan, or vision-only tools; the loop's
+    // vision fallback still strips images if the endpoint rejects them.
+    visionCapable: false,
+    activePlanContext: null,
+    projectId: null,
+    deps: {
+      executeToolCall: (name, args) => executeStyleguideToolCall(name, args, styleguideId),
+      isExternalTool: () => false,
+      callExternalTool: async () => ({ success: false, result: { error: "no external tools in styleguide chat" } }),
+    },
+  };
+}
+
+app.post("/chat", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body) return c.json({ error: "invalid JSON body" }, 400);
+  const { messages: clientMessages, projectId, selectedImageId, chatScope, styleguideId, userMessageId } = body;
+
+  // Which conversation does this turn belong to? Styleguide wins, then an
+  // image-scoped side chat, else the project main thread.
+  const convRef: ConversationRef | null = conversationKeyFromRequest({ styleguideId, projectId, selectedImageId, chatScope });
+  if (!convRef) {
+    return c.json({ error: "no conversation: provide a projectId or styleguideId" }, 400);
+  }
+
+  let setup: LoopSetup;
+  try {
+    setup = convRef.scope === "styleguide"
+      ? await buildStyleguideContext(convRef.id, clientMessages ?? [])
+      : await buildProjectContext(projectId ?? null, selectedImageId ?? null, clientMessages ?? []);
+  } catch (err) {
+    if (err instanceof ConversationNotFound) return c.json({ error: err.message }, 404);
+    throw err;
+  }
+
   const contextWindow = await getContextWindowSize();
-  const totalTokens = estimateFullContextUsage(conversation as Array<{ role: string; content: string }>, toolsJson);
   const threshold = Math.floor(contextWindow * 0.8);
 
-  const encoder = new TextEncoder();
-  const abortSignal = c.req.raw.signal;
-  const stream = new ReadableStream({
-    async start(controller) {
-      let closed = false;
-      let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  // Reject up front if this conversation is already busy, so we don't persist a
+  // user message for a turn we're not going to run.
+  const existing = registry.getActiveForKey(makeConversationKey(convRef.scope, convRef.id));
+  if (existing) {
+    return c.json({ error: "a run is already active for this conversation", runId: existing.id }, 409);
+  }
 
-      function send(event: string, data: unknown) {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: event, ...data as object })}\n\n`));
-        } catch {
-          closed = true;
-        }
+  // The new user turn is the last client message. Persist it server-side FIRST
+  // (before the run's assistant placeholder) so message order is user→assistant,
+  // and so a background run survives the client switching away.
+  const lastClient = clientMessages?.[clientMessages.length - 1];
+  const userMsg = lastClient && lastClient.role === "user"
+    ? {
+        id: userMessageId || newId(),
+        content: typeof lastClient.content === "string" ? lastClient.content : JSON.stringify(lastClient.content),
+        createdAt: new Date().toISOString(),
       }
+    : null;
+  if (userMsg) {
+    await persistUserMessage(convRef, { id: userMsg.id, role: "user", content: userMsg.content, createdAt: userMsg.createdAt });
+  }
 
-      const onAbort = () => {
-        closed = true;
-        activeReader?.cancel().catch(() => {});
-      };
-      if (abortSignal.aborted) closed = true;
-      else abortSignal.addEventListener("abort", onAbort, { once: true });
+  let run;
+  try {
+    run = await registry.create(convRef, { projectId: setup.projectId });
+  } catch (err) {
+    if (err instanceof RunConflictError) {
+      return c.json({ error: "a run is already active for this conversation", runId: err.existingRunId }, 409);
+    }
+    throw err;
+  }
 
-      try {
-        send("context_status", { used: totalTokens, total: contextWindow });
+  const ctx: AgentLoopContext = {
+    conversation: setup.conversation,
+    allTools: setup.allTools,
+    toolsJson: setup.toolsJson,
+    contextWindow,
+    threshold,
+    visionCapable: setup.visionCapable,
+    activePlanContext: setup.activePlanContext,
+    projectId: setup.projectId,
+    systemPrompt: setup.systemPrompt,
+    latestUserMessage: userMsg ? { id: userMsg.id, content: userMsg.content, createdAt: userMsg.createdAt } : null,
+    clientMessageCount: clientMessages?.length ?? 0,
+    uploadsDir: getUploadsDir(),
+  };
 
-        if (totalTokens > threshold && clientMessages.length > 4) {
-          send("summarizing", {});
-          const summary = await summarizeConversation(conversation.map((m) => ({ role: m.role, content: m.content })));
-          const latestUser = clientMessages[clientMessages.length - 1];
-          conversation.length = 0;
-          conversation.push(
-            { role: "system", content: systemPrompt },
-            { role: "system", content: `Previous conversation summary:\n${summary}` },
-            { role: "user", content: latestUser.content }
-          );
-          send("context_summarized", { summary });
-        }
+  // Fire the loop detached from this request. It runs against the run's own
+  // abort signal (cancel), not the HTTP connection, and owns persistence.
+  void runAgentLoop(run, ctx, setup.deps).catch((e) => console.error("[chat] detached run failed:", e));
 
-        const assistantMsgId = newId();
-        send("assistant_msg_id", { id: assistantMsgId });
-
-        const undoGroupId = generateGroupId();
-        let undoSeq = 0;
-        const MAX_PLAN_CONTINUATIONS = 5;
-        let planContinuations = 0;
-
-        while (planContinuations <= MAX_PLAN_CONTINUATIONS) {
-        if (closed) break;
-
-        while (turnCount < maxTurns) {
-          if (closed) break;
-          turnCount++;
-
-          const midLoopTokens = estimateFullContextUsage(conversation as Array<{ role: string; content: string }>, toolsJson);
-          if (midLoopTokens > threshold) {
-            compactToolResults(conversation);
-            const afterCompact = estimateFullContextUsage(conversation as Array<{ role: string; content: string }>, toolsJson);
-            if (afterCompact > threshold) {
-              conversation.push({ role: "system", content: "CONTEXT NOTICE: You are running low on context space. Finish your current step and provide a summary." });
-            }
-            send("context_status", { used: afterCompact, total: contextWindow });
-          }
-
-          let llmResponse: Response;
-          try {
-            llmResponse = await streamChat(conversation as any, allTools as any);
-          } catch (err) {
-            const errMsg = (err as Error).message;
-            console.error("[chat] LLM request failed:", errMsg);
-            const hasImageContent = (conversation as any[]).some((m: any) =>
-              Array.isArray(m.content) && m.content.some((p: any) => p.type === "image_url"));
-            // Strip images and retry on any image-rejection 400 (text-only model),
-            // regardless of which turn it happened on — covers both user-attached
-            // images and injected layout previews.
-            const isVisionRejection = hasImageContent && /\b400\b/.test(errMsg) && !/\b404\b/.test(errMsg);
-            if (isVisionRejection) {
-              await stripImageContentWithVisionFallback(conversation, getUploadsDir());
-              try {
-                llmResponse = await streamChat(conversation as any, allTools as any);
-              } catch (retryErr) {
-                send("error", { message: `LLM request failed: ${(retryErr as Error).message}` });
-                break;
-              }
-            } else {
-              send("error", { message: `LLM request failed: ${errMsg}` });
-              break;
-            }
-          }
-          if (!llmResponse.body) {
-            send("error", { message: "No response from LLM" });
-            break;
-          }
-
-          const reader = llmResponse.body.getReader();
-          activeReader = reader;
-          const decoder = new TextDecoder();
-          let buffer = "";
-          let content = "";
-          let thinking = "";
-          // Layout-wireframe PNGs produced by render_layout_image this turn; injected
-          // as a vision user-message after the tool results so the model sees them.
-          const pendingLayoutImages: Array<{ label: string; url: string }> = [];
-          let toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
-          let finishReason = "";
-
-          while (true) {
-            if (closed) break;
-            let done: boolean | undefined;
-            let value: Uint8Array | undefined;
-            try {
-              ({ done, value } = await reader.read());
-            } catch {
-              break;
-            }
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
-
-            for (const line of lines) {
-              if (!line.startsWith("data: ")) continue;
-              const data = line.slice(6).trim();
-              if (data === "[DONE]") continue;
-              try {
-                const parsed = JSON.parse(data);
-                const delta = parsed.choices?.[0]?.delta;
-                const reason = parsed.choices?.[0]?.finish_reason;
-                if (reason) finishReason = reason;
-                if (delta?.content) {
-                  content += delta.content;
-                  send("content", { text: delta.content });
-                }
-                if (delta?.reasoning_content || delta?.thinking) {
-                  const t = delta.reasoning_content || delta.thinking;
-                  thinking += t;
-                  send("thinking", { text: t });
-                }
-                if (delta?.tool_calls) {
-                  for (const tc of delta.tool_calls) {
-                    const idx = tc.index ?? 0;
-                    while (toolCalls.length <= idx) {
-                      toolCalls.push({ id: "", type: "function", function: { name: "", arguments: "" } });
-                    }
-                    if (tc.id) toolCalls[idx].id = tc.id;
-                    if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
-                    if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
-                  }
-                }
-              } catch {}
-            }
-          }
-          activeReader = null;
-
-          if (closed) break;
-
-          if (finishReason !== "tool_calls" || toolCalls.length === 0) {
-            if (activePlanContext && content && turnCount < maxTurns) {
-              const planStillRunning = await isPlanStillRunning(activePlanContext.id);
-              const isAskingUser = content.trimEnd().endsWith("?");
-              if (planStillRunning && !isAskingUser) {
-                conversation.push({ role: "assistant", content });
-                conversation.push({ role: "user", content: "Continue executing the plan." });
-                send("content", { text: "\n\n*Continuing plan execution...*\n\n" });
-                content = ""; thinking = ""; toolCalls = [];
-                continue;
-              }
-            }
-
-            const toolNames = allTools.map((t: any) => t.function?.name || t.name).filter(Boolean);
-            const nudge = detectToolNarration(content, toolNames);
-            if (nudge && turnCount < maxTurns) {
-              conversation.push({ role: "assistant", content });
-              conversation.push({ role: "user", content: nudge });
-              content = ""; thinking = ""; toolCalls = [];
-              continue;
-            }
-
-            break;
-          }
-
-          conversation.push({
-            role: "assistant",
-            content: content || "",
-            tool_calls: toolCalls.map((tc) => ({
-              id: tc.id,
-              type: "function" as const,
-              function: { name: tc.function.name, arguments: tc.function.arguments },
-            })),
-            ...(thinking ? { reasoning_content: thinking } : {}),
-          });
-
-          for (const tc of toolCalls) {
-            if (closed) break;
-            let args: Record<string, unknown> = {};
-            try { args = JSON.parse(tc.function.arguments || "{}"); } catch {}
-
-            let result;
-            if (mcpClientManager.isExternalTool(tc.function.name)) {
-              result = await mcpClientManager.callTool(tc.function.name, args);
-            } else {
-              result = await executeToolCall(tc.function.name, args, projectId, { groupId: undoGroupId, seq: undoSeq++ });
-            }
-
-            send("tool_call_result", {
-              toolCallId: tc.id,
-              name: tc.function.name,
-              args,
-              result: result.result,
-              success: result.success,
-            });
-
-            if (tc.function.name === "update_plan" && result.success) {
-              send("plan_update", { plan: result.result });
-            }
-
-            let resultJson = JSON.stringify(result);
-            if (resultJson.length > 20000) {
-              resultJson = JSON.stringify({ success: result.success, result: "(result truncated)" });
-            }
-
-            conversation.push({ role: "tool", content: resultJson, tool_call_id: tc.id });
-
-            // render_layout_image wrote a wireframe PNG — queue it to show the model.
-            if (visionCapable && tc.function.name === "render_layout_image" && result.success) {
-              const rr = result.result as { file?: string } | undefined;
-              if (rr?.file) {
-                try {
-                  const path = resolve(getUploadsDir(), rr.file);
-                  const buf = await readFile(path);
-                  pendingLayoutImages.push({
-                    label: (args.image_id as string) || "frame",
-                    url: `data:image/png;base64,${buf.toString("base64")}`,
-                  });
-                  unlink(path).catch(() => {}); // transient preview — drop after embedding
-                } catch (e) {
-                  console.warn("[chat] could not read layout preview:", (e as Error).message);
-                }
-              }
-            }
-
-            if (!result.success) {
-              consecutiveErrors++;
-              if (consecutiveErrors >= 5) break;
-            } else {
-              consecutiveErrors = 0;
-            }
-          }
-
-          // Inject any layout wireframes as a vision message (after all tool
-          // results, so the assistant/tool message pairing stays valid).
-          if (pendingLayoutImages.length > 0) {
-            conversation.push({
-              role: "user",
-              content: [
-                { type: "text", text: "Here is a labeled wireframe of the bounding boxes you just laid out (numbers match the region order). Look at it and verify each box is positioned and proportioned correctly for this canvas — fix any that are stretched, overlapping wrong, or mis-placed using update_region. If it looks right, proceed." },
-                ...pendingLayoutImages.map((im) => ({ type: "image_url" as const, image_url: { url: im.url } })),
-              ],
-            });
-          }
-
-          if (consecutiveErrors >= 5) break;
-          content = ""; thinking = ""; toolCalls = [];
-        }
-
-        if (turnCount >= maxTurns && activePlanContext) {
-          const planStillRunning = await isPlanStillRunning(activePlanContext.id);
-          if (planStillRunning) {
-            planContinuations++;
-            compactToolResults(conversation, 2);
-            conversation.push({ role: "user", content: "Continue executing the plan from where you left off." });
-            send("content", { text: "\n\n*Continuing plan execution...*\n\n" });
-            turnCount = 0;
-            consecutiveErrors = 0;
-            continue;
-          }
-        }
-
-        if (turnCount >= maxTurns) {
-          send("content", { text: "\n\n*[Reached tool call limit — send another message to continue]*" });
-        }
-        break;
-        }
-        send("done", {});
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error("[chat] Stream error:", message, error instanceof Error ? error.stack : "");
-        send("error", { message });
-      } finally {
-        abortSignal.removeEventListener("abort", onAbort);
-        if (!closed) {
-          closed = true;
-          try { controller.close(); } catch {}
-        }
-      }
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  });
+  return c.json({ runId: run.id, assistantMsgId: run.assistantMsgId });
 });
 
 app.post("/chat/summarize", async (c) => {
-  const body = await c.req.json();
+  const body = await c.req.json().catch(() => null);
+  if (!body?.projectId) return c.json({ error: "projectId required" }, 400);
   const { projectId } = body;
   const rows = await db.select().from(schema.chatMessages).where(eq(schema.chatMessages.projectId, projectId));
   const messages = rows.map((r) => ({ role: r.role, content: r.content }));

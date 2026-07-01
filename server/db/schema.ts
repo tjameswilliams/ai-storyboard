@@ -77,6 +77,9 @@ export const chatMessages = sqliteTable("chat_messages", {
   thinking: text("thinking"),
   toolCalls: text("tool_calls"),
   segments: text("segments"),
+  // "streaming" while a background run is still writing this assistant message,
+  // "complete" once finalized. Lets us detect rows orphaned by a server restart.
+  status: text("status").notNull().default("complete"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -92,6 +95,7 @@ export const imageChatMessages = sqliteTable("image_chat_messages", {
   thinking: text("thinking"),
   toolCalls: text("tool_calls"),
   segments: text("segments"),
+  status: text("status").notNull().default("complete"),
   createdAt: text("created_at").notNull(),
 }, (t) => [index("ix_image_chat_messages_image").on(t.imageId)]);
 
@@ -258,5 +262,24 @@ export const styleguideChatMessages = sqliteTable("styleguide_chat_messages", {
   thinking: text("thinking"),
   toolCalls: text("tool_calls"),
   segments: text("segments"),
+  status: text("status").notNull().default("complete"),
   createdAt: text("created_at").notNull(),
 });
+
+/**
+ * Durable record of an agent run (one streamed assistant turn). The live loop
+ * and its event buffer live in memory (server/lib/agentRuns.ts); this table is
+ * what survives a process restart so orphaned "running" rows can be reconciled
+ * to "interrupted" on boot. Keyed by a conversation (project | image | styleguide).
+ */
+export const agentRuns = sqliteTable("agent_runs", {
+  id: text("id").primaryKey(),                 // runId
+  scope: text("scope").notNull(),              // project | image | styleguide
+  conversationId: text("conversation_id").notNull(),
+  projectId: text("project_id"),               // tool-exec + status grouping; null for styleguide
+  status: text("status").notNull().default("running"), // running | complete | error | cancelled | interrupted
+  assistantMsgId: text("assistant_msg_id"),
+  error: text("error"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (t) => [index("ix_agent_runs_project_status").on(t.projectId, t.status)]);

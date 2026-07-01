@@ -78,9 +78,13 @@ export const createImageSlice: StateCreator<AppState, [], [], ImageSlice> = (set
     // switching frames, and fall back to the project conversation on deselect.
     if (prevScope === "image") {
       if (!id) {
+        // setChatScope handles loading + focusing the project conversation.
         get().setChatScope("project");
       } else {
-        get().loadMessages();
+        // New frame = new conversation. Detach the old run stream FIRST so it
+        // can't write into the frame we're loading, then load + (re)attach.
+        get().detachFocusedStream();
+        get().loadMessages().then(() => get().focusConversation());
       }
     }
   },

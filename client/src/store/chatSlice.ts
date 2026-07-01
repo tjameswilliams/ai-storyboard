@@ -2,10 +2,12 @@ import type { StateCreator } from "zustand";
 import { api } from "../api/client";
 import type { ChatMessage, ChatAttachment, Plan } from "../types";
 import {
-  sendChatMessage as chatStreamSend,
-  stopStreaming as chatStreamStop,
-  retryLastMessage as chatStreamRetry,
-} from "../lib/chatStream";
+  sendChatMessage as runSend,
+  stopStreaming as runStop,
+  retryLastMessage as runRetry,
+  onConversationFocused,
+  detachFocusedStream as runDetach,
+} from "../lib/agentRunClient";
 import type { AppState } from "./index";
 
 export type ChatScope = "project" | "image";
@@ -22,6 +24,11 @@ export interface ChatSlice {
   chatScope: ChatScope;
   setChatScope: (scope: ChatScope) => Promise<void>;
   loadMessages: () => Promise<void>;
+  // Detach the focused run stream and attach/replay the run for whatever
+  // conversation is now in view (called after a frame/scope/project switch).
+  focusConversation: () => Promise<void>;
+  // Stop rendering the current run's events — call BEFORE loadMessages on a switch.
+  detachFocusedStream: () => void;
   sendChatMessage: (content: string, attachments?: ChatAttachment[]) => Promise<void>;
   stopStreaming: () => void;
   clearMessages: () => Promise<void>;
@@ -42,12 +49,18 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
 
   setChatScope: async (scope) => {
     if (get().chatScope === scope) return;
+    // Detach BEFORE loading so the old conversation's run can't write into the
+    // new conversation's messages while it loads.
+    get().detachFocusedStream();
     set({ chatScope: scope, contextStatus: null });
     await get().loadMessages();
+    await get().focusConversation();
   },
 
+  focusConversation: () => onConversationFocused(),
+  detachFocusedStream: () => runDetach(),
+
   loadMessages: async () => {
-    if (get().isStreaming) { set({ messagesLoaded: true }); return; }
     // Mode precedence: styleguide > image-scoped side chat > project.
     const styleguideId = get().activeStyleguideId;
     const imageId = get().chatScope === "image" ? get().selectedImageId : null;
@@ -73,9 +86,11 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
     } catch { set({ messagesLoaded: true }); }
   },
 
-  sendChatMessage: (content, attachments) => chatStreamSend(content, attachments),
-  stopStreaming: () => chatStreamStop(),
-  retryLastMessage: () => chatStreamRetry(),
+  // Every scope (project, image, styleguide) runs through the decoupled
+  // background-run client; the server selects the right tools/prompt by scope.
+  sendChatMessage: (content, attachments) => runSend(content, attachments),
+  stopStreaming: () => runStop(),
+  retryLastMessage: () => runRetry(),
 
   clearMessages: async () => {
     const styleguideId = get().activeStyleguideId;

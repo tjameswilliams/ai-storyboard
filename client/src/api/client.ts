@@ -14,6 +14,7 @@ import type {
   StyleguideAnimation,
   StyleguideBrandAsset,
   AttachedStyleguideSummary,
+  RunSummary,
 } from "../types";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -110,20 +111,30 @@ export const api = {
 
   // Messages
   listMessages: (projectId: string) => request<ChatMessage[]>(`/projects/${projectId}/messages`),
-  saveMessage: (projectId: string, data: Record<string, unknown>) =>
-    request<ChatMessage>(`/projects/${projectId}/messages`, { method: "POST", body: JSON.stringify(data) }),
   clearMessages: (projectId: string) =>
     request<{ success: boolean }>(`/projects/${projectId}/messages`, { method: "DELETE" }),
   // Image-scoped chat (a side conversation focused on one frame)
   listImageMessages: (imageId: string) => request<ChatMessage[]>(`/images/${imageId}/messages`),
-  saveImageMessage: (imageId: string, data: Record<string, unknown>) =>
-    request<{ id: string }>(`/images/${imageId}/messages`, { method: "POST", body: JSON.stringify(data) }),
   clearImageMessages: (imageId: string) =>
     request<{ success: boolean }>(`/images/${imageId}/messages`, { method: "DELETE" }),
   summarizeMessages: (projectId: string) =>
     request<{ summary: string; messageId: string }>("/chat/summarize", {
       method: "POST", body: JSON.stringify({ projectId }),
     }),
+
+  // Agent runs — start a detached background run, subscribe to its event
+  // stream, list active runs (for status badges), and cancel.
+  startChatRun: (body: Record<string, unknown>) =>
+    request<{ runId: string; assistantMsgId: string }>("/chat", {
+      method: "POST", body: JSON.stringify(body),
+    }),
+  /** Raw SSE Response for a run; caller drives the reader. */
+  openRunStream: (runId: string, cursor: number, signal?: AbortSignal) =>
+    fetch(`/api/runs/${runId}/stream?cursor=${cursor}`, { signal }),
+  listActiveRuns: (projectId?: string) =>
+    request<{ runs: RunSummary[] }>(`/runs/active${projectId ? `?projectId=${projectId}` : ""}`),
+  cancelRun: (runId: string) =>
+    request<{ ok: boolean }>(`/runs/${runId}/cancel`, { method: "POST" }),
 
   // File uploads
   upload: async (file: File, projectId?: string) => {
@@ -263,10 +274,6 @@ export const api = {
   // Styleguide chat messages
   listStyleguideMessages: (styleguideId: string) =>
     request<ChatMessage[]>(`/styleguides/${styleguideId}/messages`),
-  saveStyleguideMessage: (styleguideId: string, data: Record<string, unknown>) =>
-    request<{ id: string }>(`/styleguides/${styleguideId}/messages`, {
-      method: "POST", body: JSON.stringify(data),
-    }),
   clearStyleguideMessages: (styleguideId: string) =>
     request<{ success: boolean }>(`/styleguides/${styleguideId}/messages`, { method: "DELETE" }),
 

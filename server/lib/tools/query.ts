@@ -148,6 +148,57 @@ export const queryTools: Record<string, ToolHandler> = {
       return { success: false, result: `Render failed: ${(e as Error).message}` };
     }
   },
+
+  // Pull a frame's ACTUAL generated picture (or a specific asset) and hand it to
+  // the vision agent. Returns the uploads-relative file path; the chat loop
+  // detects this tool and attaches the real image as a vision message so the
+  // model literally sees the render and can decide what to fix.
+  view_image: async (args, projectId) => {
+    const assetId = (args.asset_id as string | undefined)?.trim() || undefined;
+
+    if (assetId) {
+      const [asset] = await db.select().from(schema.assets).where(eq(schema.assets.id, assetId));
+      if (!asset || asset.projectId !== projectId) return { success: false, result: "Asset not found in this project" };
+      if (asset.type !== "image") return { success: false, result: `Asset ${assetId} is not an image (type: ${asset.type})` };
+      return {
+        success: true,
+        result: {
+          file: asset.filePath,
+          asset_id: assetId,
+          fileName: asset.fileName,
+          prompt: asset.prompt ?? undefined,
+          note: "The asset image is attached. Inspect it and decide whether it fits the frame's intent.",
+        },
+      };
+    }
+
+    const imageId = args.image_id as string;
+    const [img] = await db.select().from(schema.images).where(eq(schema.images.id, imageId));
+    if (!img || img.projectId !== projectId) return { success: false, result: "Image not found in this project" };
+
+    // Prefer the convenience copy on the frame; fall back to the linked asset.
+    let file = img.filePath ?? null;
+    if (!file && img.assetId) {
+      const [asset] = await db.select().from(schema.assets).where(eq(schema.assets.id, img.assetId));
+      file = asset?.filePath ?? null;
+    }
+    if (!file) {
+      return {
+        success: false,
+        result: `Frame "${imageId}" has no generated image yet (status: ${img.status}). Generate it first, then view it.`,
+      };
+    }
+
+    return {
+      success: true,
+      result: {
+        file,
+        image_id: imageId,
+        status: img.status,
+        note: "The generated image is attached. Compare it against the frame's intended high-level description and layout, then decide if edits (regions/description/palette) or a regenerate are needed.",
+      },
+    };
+  },
 };
 
 const BOX_SYMBOLS = "123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";

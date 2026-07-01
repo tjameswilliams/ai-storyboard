@@ -9,7 +9,12 @@ import { Icon, type IconName } from "../ui/Icon";
 export function SidebarPane() {
   const projects = useStore((s) => s.projects);
   const project = useStore((s) => s.project);
+  const activeRuns = useStore((s) => s.activeRuns);
   const loadProject = useStore((s) => s.loadProject);
+  // Project ids with at least one agent run in flight (any conversation).
+  const activeProjectIds = new Set(
+    Object.values(activeRuns).filter((r) => r.status === "running" && r.projectId).map((r) => r.projectId as string),
+  );
   const deleteProject = useStore((s) => s.deleteProject);
   const cloneProject = useStore((s) => s.cloneProject);
   const folders = useStore((s) => s.folders);
@@ -152,7 +157,14 @@ export function SidebarPane() {
             aria-hidden="true"
           />
         )}
-        <span className="truncate">
+        <span className="truncate flex items-center gap-1.5">
+          {activeProjectIds.has(p.id) && (
+            <span
+              className="shrink-0 w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse"
+              title="An agent is working in this project"
+              aria-hidden="true"
+            />
+          )}
           {p.name}
           {isCloning && <span className="ml-1 text-fg-faint italic">(cloning...)</span>}
         </span>
